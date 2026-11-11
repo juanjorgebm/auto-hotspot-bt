@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- ===================== BLUETOOTH ===================== -->
+    <!-- Android 8 – 11 (API 26–30): permisos "normales", se conceden al instalar. -->
+    <uses-permission
+        android:name="android.permission.BLUETOOTH"
+        android:maxSdkVersion="30" />
+    <uses-permission
+        android:name="android.permission.BLUETOOTH_ADMIN"
+        android:maxSdkVersion="30" />
+    <!-- Android 12+ (API 31+): permiso en tiempo de ejecución. Necesario para leer los
+         dispositivos vinculados y para recibir ACTION_ACL_CONNECTED / DISCONNECTED. -->
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <!-- NOTA: NO se declaran BLUETOOTH_SCAN ni ACCESS_FINE_LOCATION. La app no busca
+         dispositivos nuevos: solo usa los ya vinculados y los eventos de conexión, que no
+         requieren ubicación. Declararlos solo añadiría permisos innecesarios (y problemas
+         de revisión en Google Play). Si algún día añades escaneo, decláralos aquí. -->
+
+    <!-- ===================== RED / WI-FI / TETHERING ===================== -->
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
+    <!-- Permiso ESPECIAL "Modificar ajustes del sistema". No se pide con un diálogo: el
+         usuario lo concede en Ajustes (Settings.ACTION_MANAGE_WRITE_SETTINGS). El servicio de
+         tethering de Android lo acepta como alternativa a TETHER_PRIVILEGED en muchos
+         dispositivos (ver TetheringController.kt). -->
+    <uses-permission
+        android:name="android.permission.WRITE_SETTINGS"
+        tools:ignore="ProtectedPermissions" />
+    <!-- Solo se concede a apps de sistema/privilegiadas. Se declara para que, si la app se
+         instala como priv-app (ROM propia, root/Magisk) o en un dispositivo gestionado,
+         el tethering funcione sin depender de WRITE_SETTINGS. En un móvil normal se ignora. -->
+    <uses-permission
+        android:name="android.permission.TETHER_PRIVILEGED"
+        tools:ignore="ProtectedPermissions" />
+
+    <!-- ===================== SERVICIO EN PRIMER PLANO ===================== -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- Android 14+: tipo de servicio "connectedDevice" (dispositivo Bluetooth externo). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <!-- Android 13+: permiso en tiempo de ejecución para mostrar notificaciones. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Reanudar la vigilancia tras reiniciar el teléfono. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <uses-feature android:name="android.hardware.bluetooth" android:required="true" />
+    <uses-feature android:name="android.hardware.wifi" android:required="true" />
+
+    <!-- Android 11+: visibilidad de paquetes para poder resolver la pantalla de
+         "Zona WiFi / Compartir conexión" de Ajustes (fallback manual). -->
+    <queries>
+        <package android:name="com.android.settings" />
+        <intent>
+            <action android:name="android.settings.TETHER_SETTINGS" />
+        </intent>
+    </queries>
+
+    <application
+        android:name=".AutoHotspotApp"
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.AutoHotspot">
+
+        <activity
+            android:name=".ui.MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Servicio en primer plano que ejecuta los cambios de red. -->
+        <service
+            android:name=".service.HotspotForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
+
+        <!-- Detecta conexión/desconexión ACL del Bluetooth. ACTION_ACL_CONNECTED y
+             ACTION_ACL_DISCONNECTED están exentos de las restricciones de broadcasts
+             implícitos (Android 8+), por lo que funcionan declarados en el manifiesto aunque
+             la app esté cerrada. Son "protected broadcasts": solo el sistema puede enviarlos. -->
+        <receiver
+            android:name=".bluetooth.BluetoothConnectionReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.bluetooth.device.action.ACL_CONNECTED" />
+                <action android:name="android.bluetooth.device.action.ACL_DISCONNECTED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Rearranca el servicio tras reiniciar o actualizar la app. -->
+        <receiver
+            android:name=".receiver.BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>
