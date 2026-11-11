@@ -10,6 +10,19 @@ coche) y lo revierte al desconectarse.
 2. Deja que sincronice Gradle (AGP 8.7.3, Kotlin 2.0.21, Gradle 8.9, JDK 17).
 3. Ejecuta en un móvil **real** (el emulador no tiene Bluetooth ni tethering reales).
 
+## Si tu móvil rechaza el permiso (error «code 14», típico de Xiaomi/HyperOS)
+
+Algunos fabricantes no aceptan «Modificar ajustes del sistema» para la Zona WiFi. La app integra
+**Shizuku**, que ejecuta las llamadas con la identidad de `adb shell` (tiene `TETHER_PRIVILEGED`
+y `NETWORK_SETTINGS`). Con Shizuku la app también puede **apagar y encender el Wi-Fi**.
+
+1. Instala Shizuku desde Play Store.
+2. Ábrelo y pulsa **Iniciar** en «Iniciar mediante depuración inalámbrica» (sigue el
+   emparejamiento la primera vez; en Xiaomi activa antes *Opciones de desarrollador*).
+3. Vuelve a Auto Hotspot BT y pulsa **Autorizar** en la fila Shizuku.
+
+Sin root, Shizuku hay que volver a iniciarlo tras cada reinicio del teléfono.
+
 ## Primer uso
 
 1. Concede **Bluetooth** y **Notificaciones**.

@@ -3,6 +3,8 @@ package com.autohotspot.network
 import android.content.Context
 import android.net.wifi.WifiManager
 import android.os.Build
+import com.autohotspot.shizuku.ShizukuHelper
+import com.autohotspot.shizuku.ShizukuNetwork
 
 /**
  * Control del Wi-Fi (modo cliente).
@@ -21,6 +23,7 @@ class WifiController(context: Context) {
 
     private val wifiManager =
         context.applicationContext.getSystemService(WifiManager::class.java)
+    private val shizuku = ShizukuNetwork(context)
 
     val isWifiEnabled: Boolean get() = wifiManager?.isWifiEnabled == true
 
@@ -31,6 +34,9 @@ class WifiController(context: Context) {
         return if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
             @Suppress("DEPRECATION")
             wm.setWifiEnabled(enabled)
+        } else if (ShizukuHelper.isReady()) {
+            // Con Shizuku hacemos lo mismo que `adb shell svc wifi enable/disable`.
+            shizuku.setWifiEnabled(enabled)
         } else {
             false // No permitido para apps normales en Android 10+.
         }

@@ -45,6 +45,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.autohotspot.bluetooth.PairedDevice
+import com.autohotspot.shizuku.ShizukuHelper
 import com.autohotspot.ui.theme.AutoHotspotTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -54,6 +55,7 @@ fun MainScreen(
     onRequestRuntimePermissions: () -> Unit,
     onOpenWriteSettings: () -> Unit,
     onOpenBatterySettings: () -> Unit,
+    onShizukuAction: () -> Unit,
     onOpenBluetoothSettings: () -> Unit,
     onRefresh: () -> Unit,
     onSelectDevice: (PairedDevice) -> Unit,
@@ -82,7 +84,8 @@ fun MainScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             PermissionsCard(
-                state, onRequestRuntimePermissions, onOpenWriteSettings, onOpenBatterySettings
+                state, onRequestRuntimePermissions, onOpenWriteSettings, onOpenBatterySettings,
+                onShizukuAction
             )
             DeviceCard(state, onSelectDevice, onOpenBluetoothSettings)
             ServiceCard(state, onToggleService)
@@ -99,7 +102,8 @@ private fun PermissionsCard(
     state: UiState,
     onRequestRuntimePermissions: () -> Unit,
     onOpenWriteSettings: () -> Unit,
-    onOpenBatterySettings: () -> Unit
+    onOpenBatterySettings: () -> Unit,
+    onShizukuAction: () -> Unit
 ) {
     SectionCard(title = "1. Permisos") {
         PermissionRow(
@@ -123,6 +127,23 @@ private fun PermissionsCard(
             granted = state.canWriteSettings,
             actionLabel = "Abrir ajustes",
             onAction = onOpenWriteSettings
+        )
+        val (shizukuDescription, shizukuAction) = when (state.shizukuStatus) {
+            ShizukuHelper.Status.NOT_INSTALLED ->
+                "No instalado. Necesario si tu móvil rechaza el permiso anterior (p. ej. Xiaomi)." to "Instalar"
+            ShizukuHelper.Status.NOT_RUNNING ->
+                "Instalado pero detenido. Ábrelo e inícialo con «Depuración inalámbrica»." to "Abrir"
+            ShizukuHelper.Status.NO_PERMISSION ->
+                "En ejecución. Falta autorizar a esta app." to "Autorizar"
+            ShizukuHelper.Status.READY ->
+                "Listo: la app controla la Zona WiFi y el Wi-Fi con permisos de sistema." to ""
+        }
+        PermissionRow(
+            title = "Shizuku (recomendado)",
+            description = shizukuDescription,
+            granted = state.shizukuReady,
+            actionLabel = shizukuAction,
+            onAction = onShizukuAction
         )
         PermissionRow(
             title = "Sin optimización de batería (recomendado)",
@@ -250,10 +271,10 @@ private fun ServiceCard(state: UiState, onToggleService: (Boolean) -> Unit) {
                 enabled = state.serviceEnabled || state.canEnableService
             )
         }
-        if (!state.canWriteSettings) {
+        if (!state.hasHotspotControl) {
             Text(
-                "Sin «Modificar ajustes del sistema» la app no podrá encender la Zona WiFi y " +
-                    "solo te mostrará una notificación para hacerlo con un toque.",
+                "Sin Shizuku ni «Modificar ajustes del sistema» la app no podrá encender la " +
+                    "Zona WiFi y solo te mostrará una notificación para hacerlo con un toque.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error
             )
@@ -326,7 +347,7 @@ private fun MainScreenPreview() {
                 selectedAddress = "00:11:22:33:44:55",
                 lastStatus = "[10:00:00] Vigilando «Manos libres coche»"
             ),
-            {}, {}, {}, {}, {}, {}, {}, {}, {}
+            {}, {}, {}, {}, {}, {}, {}, {}, {}, {}
         )
     }
 }

@@ -68,4 +68,9 @@ dependencies {
     // Genera en tiempo de ejecución una subclase de la clase abstracta oculta
     // ConnectivityManager.OnStartTetheringCallback (solo Android 8.0 – 10).
     implementation("com.linkedin.dexmaker:dexmaker:2.28.3")
+
+    // Shizuku: llamadas a servicios del sistema con identidad "shell" (sin root).
+    // Necesario en móviles (p. ej. Xiaomi/HyperOS) que rechazan WRITE_SETTINGS para tethering.
+    implementation("dev.rikka.shizuku:api:13.1.5")
+    implementation("dev.rikka.shizuku:provider:13.1.5")
 }

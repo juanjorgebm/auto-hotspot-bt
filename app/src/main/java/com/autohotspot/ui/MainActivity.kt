@@ -11,7 +11,9 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.autohotspot.shizuku.ShizukuHelper
 import com.autohotspot.ui.theme.AutoHotspotTheme
+import rikka.shizuku.Shizuku
 import com.autohotspot.util.Permissions
 
 class MainActivity : ComponentActivity() {
@@ -29,8 +31,19 @@ class MainActivity : ComponentActivity() {
             if (permanentlyDenied) openAppDetails()
         }
 
+    // Refrescamos la UI cuando Shizuku arranca, se detiene o responde a la autorización.
+    private val shizukuBinderReceived = Shizuku.OnBinderReceivedListener { refreshOnMain() }
+    private val shizukuBinderDead = Shizuku.OnBinderDeadListener { refreshOnMain() }
+    private val shizukuPermissionResult =
+        Shizuku.OnRequestPermissionResultListener { _, _ -> refreshOnMain() }
+
+    private fun refreshOnMain() = runOnUiThread { viewModel.refresh() }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Shizuku.addBinderReceivedListenerSticky(shizukuBinderReceived)
+        Shizuku.addBinderDeadListener(shizukuBinderDead)
+        Shizuku.addRequestPermissionResultListener(shizukuPermissionResult)
         enableEdgeToEdge()
         setContent {
             AutoHotspotTheme {
@@ -40,6 +53,7 @@ class MainActivity : ComponentActivity() {
                     onRequestRuntimePermissions = ::requestRuntimePermissions,
                     onOpenWriteSettings = { open(Permissions.writeSettingsIntent(this)) },
                     onOpenBatterySettings = { open(Permissions.batteryOptimizationIntent()) },
+                    onShizukuAction = ::handleShizukuAction,
                     onOpenBluetoothSettings = { open(Intent(Settings.ACTION_BLUETOOTH_SETTINGS)) },
                     onRefresh = viewModel::refresh,
                     onSelectDevice = viewModel::selectDevice,
@@ -48,6 +62,27 @@ class MainActivity : ComponentActivity() {
                     onTestRevert = viewModel::testRevert
                 )
             }
+        }
+    }
+
+    override fun onDestroy() {
+        Shizuku.removeBinderReceivedListener(shizukuBinderReceived)
+        Shizuku.removeBinderDeadListener(shizukuBinderDead)
+        Shizuku.removeRequestPermissionResultListener(shizukuPermissionResult)
+        super.onDestroy()
+    }
+
+    private fun handleShizukuAction() {
+        when (ShizukuHelper.status(this)) {
+            ShizukuHelper.Status.NOT_INSTALLED -> try {
+                startActivity(ShizukuHelper.installIntent())
+            } catch (_: ActivityNotFoundException) {
+                open(ShizukuHelper.installWebIntent())
+            }
+            ShizukuHelper.Status.NOT_RUNNING ->
+                open(ShizukuHelper.launchIntent(this) ?: ShizukuHelper.installWebIntent())
+            ShizukuHelper.Status.NO_PERMISSION -> viewModel.requestShizukuPermission()
+            ShizukuHelper.Status.READY -> Unit
         }
     }
 

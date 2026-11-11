@@ -53,6 +53,7 @@
          "Zona WiFi / Compartir conexión" de Ajustes (fallback manual). -->
     <queries>
         <package android:name="com.android.settings" />
+        <package android:name="moe.shizuku.privileged.api" />
         <intent>
             <action android:name="android.settings.TETHER_SETTINGS" />
         </intent>
@@ -94,6 +95,15 @@
                 <action android:name="android.bluetooth.device.action.ACL_DISCONNECTED" />
             </intent-filter>
         </receiver>
+
+        <!-- Proveedor de Shizuku: recibe el binder de Shizuku cuando está en ejecución. -->
+        <provider
+            android:name="rikka.shizuku.ShizukuProvider"
+            android:authorities="${applicationId}.shizuku"
+            android:enabled="true"
+            android:exported="true"
+            android:multiprocess="false"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
 
         <!-- Rearranca el servicio tras reiniciar o actualizar la app. -->
         <receiver

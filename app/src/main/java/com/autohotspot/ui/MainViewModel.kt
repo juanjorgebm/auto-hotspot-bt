@@ -8,6 +8,7 @@ import com.autohotspot.bluetooth.PairedDevice
 import com.autohotspot.data.SettingsRepository
 import com.autohotspot.network.TetheringController
 import com.autohotspot.service.HotspotForegroundService
+import com.autohotspot.shizuku.ShizukuHelper
 import com.autohotspot.util.Permissions
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -20,6 +21,7 @@ data class UiState(
     val hasBluetoothPermission: Boolean = false,
     val hasNotificationPermission: Boolean = false,
     val canWriteSettings: Boolean = false,
+    val shizukuStatus: ShizukuHelper.Status = ShizukuHelper.Status.NOT_INSTALLED,
     val ignoringBatteryOptimizations: Boolean = false,
     val pairedDevices: List<PairedDevice> = emptyList(),
     val selectedAddress: String? = null,
@@ -28,8 +30,10 @@ data class UiState(
     val hotspotActive: Boolean = false,
     val lastStatus: String = ""
 ) {
-    val requiredPermissionsGranted: Boolean
-        get() = hasBluetoothPermission && hasNotificationPermission && canWriteSettings
+    val shizukuReady: Boolean get() = shizukuStatus == ShizukuHelper.Status.READY
+
+    /** Hace falta al menos una vía para controlar la Zona WiFi. */
+    val hasHotspotControl: Boolean get() = canWriteSettings || shizukuReady
 
     val canEnableService: Boolean
         get() = hasBluetoothPermission && hasNotificationPermission && selectedAddress != null
@@ -56,6 +60,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             hasBluetoothPermission = Permissions.hasBluetoothConnect(ctx),
             hasNotificationPermission = Permissions.hasNotifications(ctx),
             canWriteSettings = Permissions.canWriteSettings(ctx),
+            shizukuStatus = ShizukuHelper.status(ctx),
             ignoringBatteryOptimizations = Permissions.isIgnoringBatteryOptimizations(ctx),
             pairedDevices = bluetooth.pairedDevices(),
             selectedAddress = repo.targetDeviceAddress,
@@ -65,6 +70,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             lastStatus = repo.lastStatus
         )
     }
+
+    fun requestShizukuPermission() = ShizukuHelper.requestPermission()
 
     fun selectDevice(device: PairedDevice) {
         repo.targetDeviceAddress = device.address

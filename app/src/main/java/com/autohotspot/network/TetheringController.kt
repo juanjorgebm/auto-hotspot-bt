@@ -12,6 +12,8 @@ import android.util.Log
 import androidx.annotation.RequiresApi
 import com.android.dx.stock.ProxyBuilder
 import com.autohotspot.AutoHotspotApp.Companion.TAG
+import com.autohotspot.shizuku.ShizukuHelper
+import com.autohotspot.shizuku.ShizukuNetwork
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
@@ -64,6 +66,11 @@ class TetheringController(context: Context) {
     private val appContext = context.applicationContext
     private val wifiManager = appContext.getSystemService(WifiManager::class.java)
     private val connectivityManager = appContext.getSystemService(ConnectivityManager::class.java)
+    private val shizuku = ShizukuNetwork(appContext)
+
+    /** Android 11+ con Shizuku iniciado y autorizado: vía privilegiada (identidad "shell"). */
+    private suspend fun shizukuUsable(): Boolean =
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && ShizukuHelper.awaitReady()
 
     /** ¿Tiene la app algún permiso que el servicio de tethering acepte? */
     fun hasTetherPermission(): Boolean =
@@ -77,8 +84,19 @@ class TetheringController(context: Context) {
 
     suspend fun startWifiHotspot(): Outcome {
         if (isHotspotEnabled()) return Outcome.Success
+
+        // 1) Shizuku: funciona aunque el fabricante rechace WRITE_SETTINGS (error code 14).
+        if (shizukuUsable()) {
+            val viaShizuku = shizuku.startTethering()
+            if (viaShizuku == Outcome.Success || waitForHotspotState(true, 3_000)) {
+                return Outcome.Success
+            }
+            Log.w(TAG, "Shizuku no pudo activar el hotspot: $viaShizuku; probando vía normal")
+        }
+
+        // 2) API oculta con WRITE_SETTINGS.
         if (!hasTetherPermission()) {
-            return Outcome.Failure("Falta el permiso «Modificar ajustes del sistema»")
+            return Outcome.Failure("Falta el permiso «Modificar ajustes del sistema» o Shizuku")
         }
         return try {
             val result = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -97,6 +115,10 @@ class TetheringController(context: Context) {
 
     suspend fun stopWifiHotspot(): Outcome {
         if (!isHotspotEnabled()) return Outcome.Success
+        if (shizukuUsable()) {
+            shizuku.stopTethering()
+            if (waitForHotspotState(false)) return Outcome.Success
+        }
         return try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 val tm = tetheringManager()
@@ -238,7 +260,7 @@ class TetheringController(context: Context) {
     private fun errorText(code: Int): String = when (code) {
         11 -> "Aprovisionamiento del operador fallido (code 11)"
         12 -> "Comprobación del operador desconocida (code 12)"
-        14 -> "Sin permiso para cambiar el tethering (code 14)"
+        14 -> "Tu móvil rechaza «Modificar ajustes del sistema» (code 14). Usa Shizuku"
         else -> "Error de tethering (code $code)"
     }
 
