@@ -6,6 +6,9 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -24,3 +27,14 @@ jobs:
         with:
           name: auto-hotspot-bt-debug
           path: app/build/outputs/apk/debug/*.apk
+      - name: Publicar APK como release "latest-debug"
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk auto-hotspot-bt-debug.apk
+          gh release delete latest-debug --yes --cleanup-tag || true
+          gh release create latest-debug auto-hotspot-bt-debug.apk \
+            --title "APK de depuración (último build de main)" \
+            --notes "Compilado automáticamente desde ${{ github.sha }}." \
+            --prerelease
