@@ -319,23 +319,33 @@ object Dig {
         fun walk(x: Any?, pathKind: Kind?, depth: Int) {
             if (depth > 6 || x == null) return
             when (x) {
-                is JSONArray -> for (i in 0 until x.length()) walk(x.opt(i), pathKind, depth + 1)
+                is JSONArray -> for (i in 0 until x.length()) {
+                    val e = x.opt(i)
+                    // Listas de ids sueltos, p. ej. {"live": [123, 456]}
+                    if ((e is Number || (e is String && e.isNotBlank() && e.all { it.isDigit() })) && pathKind != null) {
+                        val item = Item(kind = pathKind, id = e.toString(), name = "#$e", fromViva = true)
+                        out.putIfAbsent(item.key, item)
+                    } else walk(e, pathKind, depth + 1)
+                }
                 is JSONObject -> {
                     // Si la respuesta trae favoritos de varios perfiles, se queda solo con los del perfil pedido.
                     val owner = direct(x, "profile_id", "profileId")
                     if (!profileId.isNullOrBlank() && owner != null && owner != profileId) return
                     val name = direct(x, *NAME_KEYS)
                     val id = direct(x, *ID_KEYS)
-                    val looksLikeItem = name != null && id != null && x.keys().asSequence().none { k ->
-                        val c = x.opt(k); c is JSONArray && c.length() > 0 && c.optJSONObject(0) != null
+                    val isPerson = x.has("photo") || x.has("email") || x.has("avatar") || x.has("is_active")
+                    val specificId = direct(x, *ID_KEYS.filter { it != "id" }.toTypedArray())
+                    val looksLikeItem = !isPerson && id != null && (name != null || specificId != null) && x.keys().asSequence().none { k ->
+                        val c = x.opt(k); c is JSONArray && c.length() > 0
                     }
                     if (looksLikeItem) {
                         val kind = kindFrom(direct(x, *TYPE_KEYS))
                             ?: if (direct(x, "series_id", "seriesId") != null && direct(x, "stream_id") == null) Kind.SERIES else null
                             ?: pathKind ?: Kind.LIVE
-                        val streamId = if (kind == Kind.SERIES) direct(x, "series_id", "seriesId", *ID_KEYS)!! else id!!
+                        val streamId = if (kind == Kind.SERIES) direct(x, "series_id", "seriesId", *ID_KEYS)!!
+                        else (specificId ?: id!!)
                         val item = Item(
-                            kind = kind, id = streamId, name = name!!,
+                            kind = kind, id = streamId, name = name ?: "#$streamId",
                             icon = direct(x, "stream_icon", "icon", "logo", "cover", "image", "poster", "thumbnail")
                                 ?.takeIf { it.startsWith("http") },
                             ext = direct(x, "container_extension", "extension", "ext"),

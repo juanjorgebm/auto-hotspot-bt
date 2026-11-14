@@ -398,6 +398,8 @@ private fun SettingsScreen(onSwitchProfile: () -> Unit, onSetup: () -> Unit) {
     var token by rememberSaveable { mutableStateOf("") }
     var format by remember { mutableStateOf(repo.prefs.liveFormat) }
     var confirmDelete by remember { mutableStateOf(false) }
+    var raw by remember { mutableStateOf("") }
+    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
     val p = profile ?: return
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -445,10 +447,15 @@ private fun SettingsScreen(onSwitchProfile: () -> Unit, onSetup: () -> Unit) {
                 BigButton("Actualizar favoritos", enabled = !busy && (saved.isNotEmpty() || token.isNotBlank())) {
                     busy = true; status = "Actualizando favoritos…"
                     scope.launch {
-                        status = try { refreshVivaFavorites(saved.ifEmpty { token }, p) } catch (e: Exception) { "Error: ${friendlyError(e)}" }
+                        val (msg, details) = refreshVivaFavorites(saved.ifEmpty { token }, p)
+                        status = msg; raw = details
                         busy = false
                     }
                 }
+                if (raw.isNotEmpty()) OutlinedButton(onClick = {
+                    clipboard.setText(androidx.compose.ui.text.AnnotatedString(raw))
+                    status = "Detalles copiados (contraseñas y token ocultos). Pégalos en el chat."
+                }, modifier = Modifier.heightIn(min = 64.dp)) { Text("Copiar detalles", style = MaterialTheme.typography.labelLarge) }
                 if (saved.isNotEmpty()) OutlinedButton(onClick = { repo.prefs.vivaToken = ""; status = "Token olvidado." }, modifier = Modifier.heightIn(min = 64.dp)) {
                     Text("Olvidar token", style = MaterialTheme.typography.labelLarge)
                 }

@@ -283,19 +283,23 @@ private suspend fun saveVivaProfile(viva: VivaApi, customerId: String, p: VivaAp
     }
 }
 
-/** Pantalla para actualizar favoritos de un perfil que ya existe (desde Ajustes). */
-suspend fun refreshVivaFavorites(token: String, profile: Profile): String {
+/** Actualiza los favoritos de un perfil que ya existe (desde Ajustes). Devuelve mensaje y detalles técnicos. */
+suspend fun refreshVivaFavorites(token: String, profile: Profile): Pair<String, String> {
     val repo = RutaApp.repo
     val viva = VivaApi(token, repo.http)
-    var customerId = repo.prefs.vivaCustomerId
-    if (customerId.isEmpty()) {
-        customerId = withContext(Dispatchers.IO) { viva.findCustomer(repo.prefs.vivaUsername) }?.id
-            ?: return "No se encontró el usuario de cliente."
-        repo.prefs.vivaCustomerId = customerId
+    return try {
+        var customerId = repo.prefs.vivaCustomerId
+        if (customerId.isEmpty()) {
+            customerId = withContext(Dispatchers.IO) { viva.findCustomer(repo.prefs.vivaUsername) }?.id
+                ?: return "No se encontró el usuario de cliente." to viva.lastRaw
+            repo.prefs.vivaCustomerId = customerId
+        }
+        val favs = withContext(Dispatchers.IO) { viva.favorites(customerId, profile.vivaProfileId.ifBlank { null }) }
+        val n = repo.importVivaFavorites(profile, favs)
+        "$n favorito(s) actualizados desde VivaPlayer." to viva.lastRaw
+    } catch (e: Exception) {
+        "Error: ${friendlyError(e)}" to viva.lastRaw
     }
-    val favs = withContext(Dispatchers.IO) { viva.favorites(customerId, profile.vivaProfileId.ifBlank { null }) }
-    val n = repo.importVivaFavorites(profile, favs)
-    return "$n favorito(s) actualizados desde VivaPlayer."
 }
 
 @Composable
