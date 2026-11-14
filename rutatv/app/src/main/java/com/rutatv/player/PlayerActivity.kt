@@ -224,6 +224,7 @@ class PlayerActivity : Activity() {
         prevBtn.visibility = if (canStep()) View.VISIBLE else View.GONE
         nextBtn.visibility = if (canStep()) View.VISIBLE else View.GONE
         repo.addRecent(item)
+        ensureSeriesQueue(item)
         scope.launch {
             val url = try {
                 resolveUrl(item)
@@ -291,6 +292,45 @@ class PlayerActivity : Activity() {
     private fun showMessage(text: String) {
         messageView.text = text
         messageView.visibility = View.VISIBLE
+    }
+
+    private var seriesQueueFor: String? = null
+
+    /**
+     * Si se abrió un episodio suelto (p. ej. desde el widget de series recientes), carga la serie
+     * completa para que ‹ › y el final del capítulo pasen al episodio siguiente de ESA serie.
+     */
+    private fun ensureSeriesQueue(item: Item) {
+        if (item.kind != Kind.EPISODE) return
+        scope.launch {
+            try {
+                val sid = item.categoryId ?: findSeriesId(item.name) ?: return@launch
+                if (seriesQueueFor == sid) return@launch
+                val info = repo.seriesInfo(sid)
+                val name = info.name.ifBlank { item.name.substringBefore(" · T") }
+                val all = info.seasons.toSortedMap().flatMap { (_, eps) ->
+                    eps.map { e ->
+                        Item(Kind.EPISODE, e.id, "$name · T${e.season}E${e.number} ${e.title}", e.image ?: info.cover, e.ext, sid)
+                    }
+                }
+                val idx = all.indexOfFirst { it.id == item.id }
+                if (idx < 0 || current?.key != item.key) return@launch
+                PlayQueue.items = all
+                PlayQueue.index = idx
+                seriesQueueFor = sid
+                prevBtn.visibility = if (canStep() && topBar.visibility == View.VISIBLE) View.VISIBLE else View.GONE
+                nextBtn.visibility = prevBtn.visibility
+            } catch (e: Exception) {
+                // Sin datos de la serie: se mantiene la lista con la que se abrió.
+            }
+        }
+    }
+
+    /** Episodios antiguos sin id de serie: se busca la serie por el nombre ("Serie · T1E2 ..."). */
+    private suspend fun findSeriesId(episodeName: String): String? {
+        val seriesName = episodeName.substringBefore(" · T", "").ifBlank { return null }
+        val wanted = com.rutatv.data.Repo.normalize(seriesName)
+        return repo.streams(Kind.SERIES, null).firstOrNull { com.rutatv.data.Repo.normalize(it.name) == wanted }?.id
     }
 
     /** Botones ‹ › para canales en vivo y episodios (no para películas). */

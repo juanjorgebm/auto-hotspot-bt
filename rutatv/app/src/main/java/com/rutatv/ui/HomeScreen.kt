@@ -324,7 +324,7 @@ private fun SeriesDetail(series: Item, onBack: () -> Unit) {
                 }
                 val eps: List<Episode> = seasons[current] ?: emptyList()
                 val queue = eps.map { e ->
-                    Item(Kind.EPISODE, e.id, "${series.name} · T${e.season}E${e.number} ${e.title}", e.image ?: series.icon, e.ext)
+                    Item(Kind.EPISODE, e.id, "${series.name} · T${e.season}E${e.number} ${e.title}", e.image ?: series.icon, e.ext, series.id)
                 }
                 LazyColumn(Modifier.fillMaxSize()) {
                     itemsIndexed(eps) { i, e ->
