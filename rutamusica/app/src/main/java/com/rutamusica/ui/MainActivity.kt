@@ -59,21 +59,7 @@ class MainActivity : ComponentActivity() {
             override fun onPause() { if (vm.isPlaying) vm.playPause() }
             override fun onSkipToNext() = vm.next()
             override fun onSkipToPrevious() = vm.previous()
-            /** Cualquier toque en la pantalla vuelve a mostrar los controles del modo video. */
-    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
-        if (ev.actionMasked == MotionEvent.ACTION_DOWN) vm.userInteracted()
-        return super.dispatchTouchEvent(ev)
-    }
-
-    @Suppress("DEPRECATION")
-    private fun setImmersive(on: Boolean) {
-        window.decorView.systemUiVisibility = if (on) {
-            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or View.SYSTEM_UI_FLAG_FULLSCREEN or
-                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-        } else View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-    }
-
-    override fun onStop() { vm.pause() }
+            override fun onStop() { vm.pause() }
         })
         @Suppress("DEPRECATION")
         s.setFlags(MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS or MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS)
@@ -114,6 +100,20 @@ class MainActivity : ComponentActivity() {
         } catch (_: Throwable) {
             0
         }
+    }
+
+    /** Cualquier toque en la pantalla vuelve a mostrar los controles del modo video. */
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        if (ev.actionMasked == MotionEvent.ACTION_DOWN) vm.userInteracted()
+        return super.dispatchTouchEvent(ev)
+    }
+
+    @Suppress("DEPRECATION")
+    private fun setImmersive(on: Boolean) {
+        window.decorView.systemUiVisibility = if (on) {
+            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or View.SYSTEM_UI_FLAG_FULLSCREEN or
+                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+        } else View.SYSTEM_UI_FLAG_LAYOUT_STABLE
     }
 
     override fun onStop() {
