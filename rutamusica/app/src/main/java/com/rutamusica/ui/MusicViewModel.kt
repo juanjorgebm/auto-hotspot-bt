@@ -146,7 +146,7 @@ class MusicViewModel(app: Application) : AndroidViewModel(app), PlayerEngine.Lis
                 prefs.channelName = name
                 val mine = yt.myPlaylists()
                 val liked = Playlist(likes ?: "LL", "Me gusta", 0, null, special = true)
-                playlists = listOf(liked) + mine
+                playlists = sortPlaylists(listOf(liked) + mine)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -156,6 +156,39 @@ class MusicViewModel(app: Application) : AndroidViewModel(app), PlayerEngine.Lis
                 libLoading = false
             }
         }
+    }
+
+    // ---------- Orden y favoritas de las listas (se guardan en la app) ----------
+    var favorites by mutableStateOf(prefs.favoritePlaylists)
+        private set
+    var editingOrder by mutableStateOf(false)
+
+    /** Favoritas primero; dentro de cada grupo, el orden que eligió la persona (las nuevas al final). */
+    private fun sortPlaylists(list: List<Playlist>): List<Playlist> {
+        val pos = prefs.playlistOrder.withIndex().associate { it.value to it.index }
+        val favs = favorites
+        return list.withIndex().sortedWith(
+            compareBy<IndexedValue<Playlist>>({ if (it.value.id in favs) 0 else 1 }, { pos[it.value.id] ?: (100_000 + it.index) })
+        ).map { it.value }
+    }
+
+    fun toggleFavorite(p: Playlist) {
+        favorites = if (p.id in favorites) favorites - p.id else favorites + p.id
+        prefs.favoritePlaylists = favorites
+        playlists = sortPlaylists(playlists)
+        prefs.playlistOrder = playlists.map { it.id }
+    }
+
+    fun movePlaylist(p: Playlist, delta: Int) {
+        val l = playlists.toMutableList()
+        val i = l.indexOf(p)
+        val j = i + delta
+        if (i < 0 || j !in l.indices) return
+        // Solo se mueve dentro de su grupo (favoritas o no favoritas).
+        if ((l[j].id in favorites) != (p.id in favorites)) return
+        l[i] = l[j]; l[j] = p
+        playlists = l
+        prefs.playlistOrder = l.map { it.id }
     }
 
     fun open(p: Playlist) {

@@ -28,6 +28,9 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.Search
@@ -306,13 +309,31 @@ private fun LibraryPane(vm: MusicViewModel) {
             vm.libError != null -> MessageBox("No se pudieron leer tus listas", vm.libError) {
                 BigButton("Reintentar") { vm.loadLibrary() }
             }
-            else -> LazyVerticalGrid(
-                columns = GridCells.Adaptive(190.dp),
-                contentPadding = PaddingValues(12.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                gridItemsIndexed(vm.playlists) { _, p -> PlaylistCard(p) { vm.open(p) } }
+            else -> Column(Modifier.fillMaxSize()) {
+                Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        if (vm.editingOrder) "Usa las flechas para mover y la estrella para tus favoritas"
+                        else "Toca la estrella para poner una lista arriba",
+                        color = Muted, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f),
+                    )
+                    if (vm.editingOrder) BigButton("Listo") { vm.editingOrder = false }
+                    else SoftButton("Ordenar listas") { vm.editingOrder = true }
+                }
+                LazyVerticalGrid(
+                    columns = GridCells.Adaptive(190.dp),
+                    contentPadding = PaddingValues(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    gridItemsIndexed(vm.playlists, key = { _, p -> p.id }) { _, p ->
+                        PlaylistCard(
+                            p, fav = p.id in vm.favorites, editing = vm.editingOrder,
+                            onFav = { vm.toggleFavorite(p) },
+                            onBack = { vm.movePlaylist(p, -1) },
+                            onForward = { vm.movePlaylist(p, 1) },
+                        ) { if (!vm.editingOrder) vm.open(p) }
+                    }
+                }
             }
         }
     } else {
@@ -352,7 +373,15 @@ private fun LibraryPane(vm: MusicViewModel) {
 }
 
 @Composable
-private fun PlaylistCard(p: Playlist, onClick: () -> Unit) {
+private fun PlaylistCard(
+    p: Playlist,
+    fav: Boolean,
+    editing: Boolean,
+    onFav: () -> Unit,
+    onBack: () -> Unit,
+    onForward: () -> Unit,
+    onClick: () -> Unit,
+) {
     Column(
         Modifier.clip(RoundedCornerShape(14.dp)).background(PanelHi).clickable(onClick = onClick)
     ) {
@@ -364,10 +393,29 @@ private fun PlaylistCard(p: Playlist, onClick: () -> Unit) {
             } else {
                 Icon(Icons.Filled.LibraryMusic, null, tint = Muted, modifier = Modifier.size(48.dp))
             }
+            // Estrella de favorita (junto a la carátula, no sobre un video)
+            Box(
+                Modifier.align(Alignment.TopEnd).padding(6.dp).size(48.dp).clip(RoundedCornerShape(50))
+                    .background(Color.Black.copy(alpha = 0.55f)).clickable(onClick = onFav),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(if (fav) Icons.Filled.Star else Icons.Filled.StarBorder, "Favorita",
+                    tint = if (fav) Color(0xFFFFC107) else Color.White, modifier = Modifier.size(30.dp))
+            }
         }
         Column(Modifier.padding(10.dp)) {
             Text(p.title, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
             if (!p.special) Text("${p.count} canciones", color = Muted, style = MaterialTheme.typography.bodySmall)
+        }
+        if (editing) {
+            Row(Modifier.fillMaxWidth().padding(bottom = 6.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+                IconButton(onClick = onBack, modifier = Modifier.size(56.dp)) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "Mover antes", modifier = Modifier.size(32.dp))
+                }
+                IconButton(onClick = onForward, modifier = Modifier.size(56.dp)) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowForward, "Mover después", modifier = Modifier.size(32.dp))
+                }
+            }
         }
     }
 }

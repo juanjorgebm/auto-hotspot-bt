@@ -44,6 +44,14 @@ class Prefs(context: Context) {
         get() = sp.getBoolean("yt_mode", false)
         set(v) = sp.edit().putBoolean("yt_mode", v).apply()
 
+    /** Orden de las listas elegido por la persona (ids) y las marcadas como favoritas. */
+    var playlistOrder: List<String>
+        get() = s("pl_order").split('\n').filter { it.isNotBlank() }
+        set(v) = put("pl_order", v.joinToString("\n"))
+    var favoritePlaylists: Set<String>
+        get() = sp.getStringSet("pl_favs", emptySet())?.toSet() ?: emptySet()
+        set(v) = sp.edit().putStringSet("pl_favs", HashSet(v)).apply()
+
     var shuffle: Boolean
         get() = sp.getBoolean("shuffle", false)
         set(v) = sp.edit().putBoolean("shuffle", v).apply()
