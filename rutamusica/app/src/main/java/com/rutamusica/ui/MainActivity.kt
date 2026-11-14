@@ -55,7 +55,7 @@ class MainActivity : ComponentActivity() {
                 when {
                     vm.youTubeMode && b != null && b.fullscreen -> b.exitFullscreen()
                     vm.youTubeMode && b != null && b.canGoBack -> b.back()
-                    vm.youTubeMode -> vm.setYouTubeMode(false)
+                    vm.youTubeMode -> vm.switchYouTubeMode(false)
                     vm.videoMode -> vm.toggleVideoMode()
                     else -> moveTaskToBack(true)
                 }

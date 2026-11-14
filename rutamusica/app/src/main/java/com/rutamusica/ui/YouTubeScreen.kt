@@ -46,7 +46,7 @@ fun YouTubeScreen(vm: MusicViewModel, browser: YouTubeBrowser) {
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                SideButton("Música", Icons.Filled.MusicNote, Accent) { vm.setYouTubeMode(false) }
+                SideButton("Música", Icons.Filled.MusicNote, Accent) { vm.switchYouTubeMode(false) }
                 Spacer(Modifier.height(8.dp))
                 SideButton("Atrás", Icons.AutoMirrored.Filled.ArrowBack, if (browser.canGoBack) Color.White else Muted) {
                     if (browser.canGoBack) browser.back()

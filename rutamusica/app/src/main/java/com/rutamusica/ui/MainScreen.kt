@@ -97,7 +97,7 @@ fun MainScreen(vm: MusicViewModel, playerView: View) {
                     // Cambiar al modo YouTube (la página de YouTube como en el celular)
                     Row(
                         Modifier.clip(RoundedCornerShape(28.dp)).background(Color(0xFFE53935))
-                            .clickable { vm.setYouTubeMode(true) }.padding(horizontal = 18.dp, vertical = 12.dp),
+                            .clickable { vm.switchYouTubeMode(true) }.padding(horizontal = 18.dp, vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Icon(Icons.Filled.SmartDisplay, null, tint = Color.White, modifier = Modifier.size(26.dp))

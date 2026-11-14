@@ -320,7 +320,7 @@ class MusicViewModel(app: Application) : AndroidViewModel(app), PlayerEngine.Lis
     var youTubeMode by mutableStateOf(prefs.youTubeMode)
         private set
 
-    fun setYouTubeMode(on: Boolean) {
+    fun switchYouTubeMode(on: Boolean) {
         if (on) pause()
         youTubeMode = on
         prefs.youTubeMode = on
