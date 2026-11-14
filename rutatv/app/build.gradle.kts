@@ -75,6 +75,9 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer-hls:1.5.1")
     implementation("androidx.media3:media3-ui:1.5.1")
     implementation("androidx.media3:media3-datasource-okhttp:1.5.1")
+    // Decodificadores de audio por software (AC3, E-AC3, DTS, TrueHD…) que muchas
+    // pantallas con Android 5.1 no traen. Compilación de FFmpeg para Media3 que publica Jellyfin.
+    implementation("org.jellyfin.media3:media3-ffmpeg-decoder:1.5.0+1")
 
     // Imágenes (logos y carátulas)
     implementation("io.coil-kt:coil-compose:2.7.0")

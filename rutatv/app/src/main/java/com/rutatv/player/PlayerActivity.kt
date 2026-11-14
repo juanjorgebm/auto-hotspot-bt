@@ -168,7 +168,10 @@ class PlayerActivity : Activity() {
 
     private fun createPlayer(): ExoPlayer {
         val dataSource = OkHttpDataSource.Factory(Http.client(this)).setUserAgent(Http.USER_AGENT)
-        val renderers = DefaultRenderersFactory(this).setEnableDecoderFallback(true)
+        val renderers = DefaultRenderersFactory(this)
+            .setEnableDecoderFallback(true)
+            // Audio con FFmpeg primero: evita fallos con AC3/DTS en equipos viejos.
+            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(15_000, 50_000, 2_000, 4_000)
             .build()
@@ -271,7 +274,13 @@ class PlayerActivity : Activity() {
                 } else playCurrent()
             }, 2500)
         } else {
-            showMessage("No se puede reproducir.\n${error.errorCodeName}")
+            val hint = when (error.errorCode) {
+                PlaybackException.ERROR_CODE_DECODER_INIT_FAILED, PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED,
+                PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED, PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES ->
+                    "\nEsta pantalla no puede decodificar el video (probablemente H.265/HEVC o 4K).\nPrueba otra versión de la película si existe."
+                else -> ""
+            }
+            showMessage("No se puede reproducir.\n${error.errorCodeName}$hint")
         }
     }
 

@@ -165,13 +165,13 @@ private fun ItemsView(kind: Kind, items: List<Item>, onOpen: (Item, List<Item>) 
     val favKeys = remember(favorites) { favorites.map { it.key }.toHashSet() }
     if (kind == Kind.LIVE) {
         LazyColumn(Modifier.fillMaxSize()) {
-            itemsIndexed(items, key = { _, it -> it.key }) { i, item ->
+            itemsIndexed(items) { i, item ->
                 ChannelRow(i + 1, item, item.key in favKeys, onClick = { onOpen(item, items) }, onStar = { repo.toggleFavorite(item) })
             }
         }
     } else {
         LazyVerticalGrid(GridCells.Adaptive(170.dp), Modifier.fillMaxSize().padding(horizontal = 6.dp)) {
-            itemsIndexed(items, key = { _, it -> it.key }) { _, item ->
+            itemsIndexed(items) { _, item ->
                 PosterCard(item, item.key in favKeys, onClick = { onOpen(item, items) }, onStar = {
                     if (item.kind != Kind.EPISODE) repo.toggleFavorite(item)
                 })
@@ -225,7 +225,7 @@ private fun Browse(kind: Kind) {
                     item { SideEntry("★ Favoritos", catId == FAV && query.isBlank(), "${myFavs.size}") { catId = FAV; query = "" } }
                     item { SideEntry("Recientes", catId == REC && query.isBlank(), "${myRecents.size}") { catId = REC; query = "" } }
                     val list = cats.data ?: emptyList()
-                    itemsIndexed(list, key = { _, c -> c.id }) { _, c ->
+                    itemsIndexed(list) { _, c ->
                         SideEntry(c.name, catId == c.id && query.isBlank()) { catId = c.id; query = "" }
                     }
                 }
@@ -326,7 +326,7 @@ private fun SeriesDetail(series: Item, onBack: () -> Unit) {
                     Item(Kind.EPISODE, e.id, "${series.name} · T${e.season}E${e.number} ${e.title}", e.image ?: series.icon, e.ext)
                 }
                 LazyColumn(Modifier.fillMaxSize()) {
-                    itemsIndexed(eps, key = { _, e -> e.id }) { i, e ->
+                    itemsIndexed(eps) { i, e ->
                         val started = repo.position(queue[i]) > 10_000
                         Row(
                             Modifier.fillMaxWidth().padding(vertical = 5.dp).clip(RoundedCornerShape(16.dp)).background(Panel)
