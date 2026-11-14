@@ -1,0 +1,47 @@
+name: Build RutaTV
+
+on:
+  push:
+    branches: [claude/project-thread-9y6pnj]
+    paths: ["rutatv/**", ".github/workflows/build-rutatv.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: rutatv
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Compilar APK
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleDebug -PversionCode=${{ github.run_number }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rutatv-debug
+          path: rutatv/app/build/outputs/apk/debug/*.apk
+      - name: Publicar release "rutatv-latest" (la usa el actualizador de la app)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk rutatv.apk
+          cat > version.json <<JSON
+          {"versionCode": ${{ github.run_number }}, "versionName": "1.0.${{ github.run_number }}", "notes": "$(git log -1 --pretty=%s | tr -d '"\\')", "apk": "https://github.com/${{ github.repository }}/releases/download/rutatv-latest/rutatv.apk"}
+          JSON
+          cat version.json
+          gh release delete rutatv-latest --yes --cleanup-tag || true
+          gh release create rutatv-latest rutatv.apk version.json \
+            --target ${{ github.sha }} \
+            --title "RutaTV (último build)" \
+            --notes "APK de RutaTV compilado desde ${{ github.sha }}." \
+            --prerelease

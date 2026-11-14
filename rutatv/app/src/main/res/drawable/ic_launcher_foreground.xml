@@ -1,0 +1,11 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- pantalla -->
+    <path android:fillColor="#FFFF8A3D"
+        android:pathData="M30,36h48a6,6 0,0 1,6 6v26a6,6 0,0 1,-6 6H30a6,6 0,0 1,-6 -6V42a6,6 0,0 1,6 -6z"/>
+    <!-- play -->
+    <path android:fillColor="#FF10141A" android:pathData="M48,45L63,55L48,65z"/>
+    <!-- carretera -->
+    <path android:fillColor="#FFFF8A3D" android:pathData="M44,78h20l4,8H40z"/>
+</vector>
