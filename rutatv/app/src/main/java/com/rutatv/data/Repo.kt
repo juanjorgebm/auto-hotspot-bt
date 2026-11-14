@@ -70,11 +70,28 @@ class Repo(context: Context) {
     }
 
     // ---------- Catálogo ----------
+    // ---------- Filtro de 4K / HEVC (la pantalla del carro no los puede reproducir) ----------
+    private val _filterVersion = MutableStateFlow(0)
+    /** Cambia cuando se activa/desactiva el filtro, para que las listas se recarguen. */
+    val filterVersion: StateFlow<Int> = _filterVersion
+
+    fun setHide4k(v: Boolean) { prefs.hide4k = v; _filterVersion.value++; com.rutatv.widget.Widgets.refresh(appContext) }
+    fun markUnplayable(item: Item) { prefs.addBadKey(item.key); _filterVersion.value++ }
+    fun resetUnplayable() { prefs.clearBadKeys(); _filterVersion.value++ }
+
+    fun isHidden(name: String) = prefs.hide4k && HI_RES.containsMatchIn(name)
+    fun isHidden(item: Item) = prefs.hide4k && (HI_RES.containsMatchIn(item.name) || prefs.isBadKey(item.key))
+    fun visible(list: List<Item>) = if (!prefs.hide4k) list else list.filter { !isHidden(it) }
+
+    // ---------- Catálogo ----------
     suspend fun categories(kind: Kind): List<Category> = withContext(Dispatchers.IO) {
-        catCache[kind] ?: xtream().categories(kind).also { catCache[kind] = it }
+        val all = catCache[kind] ?: xtream().categories(kind).also { catCache[kind] = it }
+        if (prefs.hide4k) all.filter { !isHidden(it.name) } else all
     }
 
-    suspend fun streams(kind: Kind, categoryId: String?): List<Item> = withContext(Dispatchers.IO) {
+    suspend fun streams(kind: Kind, categoryId: String?): List<Item> = visible(rawStreams(kind, categoryId))
+
+    private suspend fun rawStreams(kind: Kind, categoryId: String?): List<Item> = withContext(Dispatchers.IO) {
         val key = "${kind.name}:${categoryId ?: "*"}"
         streamCache[key] ?: run {
             // Si ya tenemos el catálogo completo, filtramos en memoria.
@@ -164,6 +181,9 @@ class Repo(context: Context) {
     fun savePosition(item: Item, ms: Long) { if (pid.isNotEmpty()) prefs.savePosition(pid, item.key, ms) }
 
     companion object {
+        /** 4K, UHD, 2160p, HEVC, H.265, x265 en el nombre del canal, película o categoría. */
+        val HI_RES = Regex("(^|[^a-z0-9])(4k|uhd|2160p?|hevc|h[ .]?265|x265)([^a-z0-9]|$)", RegexOption.IGNORE_CASE)
+
         fun normalize(s: String): String {
             val n = java.text.Normalizer.normalize(s.lowercase(), java.text.Normalizer.Form.NFD)
             return n.replace(Regex("\\p{Mn}+"), "").replace(Regex("[^a-z0-9 ]"), " ").replace(Regex("\\s+"), " ").trim()

@@ -72,18 +72,19 @@ object Widgets {
         val profile = repo.active.value ?: repo.lastProfile() ?: return emptyList()
         return when (type) {
             WidgetType.FAV_CHANNELS -> prefs.favorites(profile.id).filter { it.kind == Kind.LIVE }
-            WidgetType.RECENT_SERIES -> prefs.recents(profile.id).filter { it.kind == Kind.EPISODE }.take(20)
+            WidgetType.RECENT_SERIES -> repo.visible(prefs.recents(profile.id).filter { it.kind == Kind.EPISODE }).take(20)
             WidgetType.NEW_MOVIES -> {
                 val server = profile.account.server
                 val cached = prefs.newMovies(server)
                 val stale = System.currentTimeMillis() - prefs.newMoviesTime(server) > 6 * 3600_000L
-                if (network && (cached.isEmpty() || stale)) {
+                val list = if (network && (cached.isEmpty() || stale)) {
                     try {
-                        XtreamApi(profile.account, repo.http).latestMovies(24).also { prefs.setNewMovies(server, it) }
+                        XtreamApi(profile.account, repo.http).latestMovies(80).also { prefs.setNewMovies(server, it) }
                     } catch (e: Exception) {
                         cached
                     }
                 } else cached
+                repo.visible(list).take(24)
             }
             WidgetType.EVENTS -> {
                 val cacheKey = "evt_items_$widgetId"
@@ -93,7 +94,7 @@ object Widgets {
                     val wanted = com.rutatv.data.Repo.normalize(EVENT_CATEGORIES[eventChoice(widgetId)])
                     val cat = api.categories(Kind.LIVE).firstOrNull { com.rutatv.data.Repo.normalize(it.name).contains(wanted) }
                         ?: return emptyList<Item>().also { prefs.setItems(cacheKey, it) }
-                    api.streams(Kind.LIVE, cat.id).also { prefs.setItems(cacheKey, it) }
+                    repo.visible(api.streams(Kind.LIVE, cat.id)).also { prefs.setItems(cacheKey, it) }
                 } catch (e: Exception) {
                     prefs.items(cacheKey)
                 }

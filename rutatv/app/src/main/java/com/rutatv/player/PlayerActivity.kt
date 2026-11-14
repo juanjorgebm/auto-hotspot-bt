@@ -276,8 +276,12 @@ class PlayerActivity : Activity() {
         } else {
             val hint = when (error.errorCode) {
                 PlaybackException.ERROR_CODE_DECODER_INIT_FAILED, PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED,
-                PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED, PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES ->
-                    "\nEsta pantalla no puede decodificar el video (probablemente H.265/HEVC o 4K).\nPrueba otra versión de la película si existe."
+                PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED, PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES -> {
+                    // Se recuerda para ocultarlo de las listas (si "Ocultar 4K" está activo).
+                    repo.markUnplayable(item)
+                    "\nEsta pantalla no puede decodificar el video (probablemente H.265/HEVC o 4K).\n" +
+                        "Ya no aparecerá en las listas. Prueba otra versión si existe."
+                }
                 else -> ""
             }
             showMessage("No se puede reproducir.\n${error.errorCodeName}$hint")

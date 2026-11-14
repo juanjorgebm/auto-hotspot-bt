@@ -80,6 +80,20 @@ class Prefs(context: Context) {
         get() = sp.getString("last_crash", "") ?: ""
         set(v) = sp.edit().putString("last_crash", v).apply()
 
+    /** Ocultar contenido 4K/HEVC (activado por defecto: la pantalla del carro no lo reproduce). */
+    var hide4k: Boolean
+        get() = sp.getBoolean("hide_4k", true)
+        set(v) = sp.edit().putBoolean("hide_4k", v).apply()
+
+    /** Elementos que fallaron al decodificar en esta pantalla (se ocultan junto con el 4K). */
+    private var badKeys: Set<String>
+        get() = sp.getStringSet("bad_keys", emptySet()) ?: emptySet()
+        set(v) = sp.edit().putStringSet("bad_keys", HashSet(v)).apply()
+    fun isBadKey(k: String) = k in badKeys
+    fun addBadKey(k: String) { badKeys = badKeys + k }
+    fun clearBadKeys() { badKeys = emptySet() }
+    fun badKeyCount() = badKeys.size
+
     // Genéricos (widgets)
     fun items(name: String) = readItems(name)
     fun setItems(name: String, v: List<Item>) = writeItems(name, v)

@@ -200,7 +200,8 @@ private fun Browse(kind: Kind) {
         return
     }
 
-    val (cats, retryCats) = rememberLoad(kind) { repo.categories(kind) }
+    val fv by repo.filterVersion.collectAsState()
+    val (cats, retryCats) = rememberLoad(kind, fv) { repo.categories(kind) }
     val myFavs = favorites.filter { it.kind == kind || (kind == Kind.SERIES && it.kind == Kind.EPISODE) }
     val myRecents = recents.filter { it.kind == kind || (kind == Kind.SERIES && it.kind == Kind.EPISODE) }
 
@@ -234,7 +235,7 @@ private fun Browse(kind: Kind) {
         Column(Modifier.weight(1f).fillMaxHeight()) {
             SearchField(query, "Buscar en ${title.lowercase()}") { query = it }
             if (query.trim().length >= 2) {
-                val (res, retry) = rememberLoad(kind, query) {
+                val (res, retry) = rememberLoad(kind, query, fv) {
                     delay(450)
                     repo.search(kind, query)
                 }
@@ -250,7 +251,7 @@ private fun Browse(kind: Kind) {
                 else ItemsView(kind, myFavs, open)
                 REC -> if (myRecents.isEmpty()) EmptyBox("Todavía no has visto nada.") else ItemsView(kind, myRecents, open)
                 else -> {
-                    val (res, retry) = rememberLoad(kind, c) { repo.streams(kind, c) }
+                    val (res, retry) = rememberLoad(kind, c, fv) { repo.streams(kind, c) }
                     when {
                         res.loading -> Loading()
                         res.error != null -> ErrorBox(res.error, retry)
@@ -479,6 +480,28 @@ private fun SettingsScreen(onSwitchProfile: () -> Unit, onSetup: () -> Unit) {
                     Text("Olvidar token", style = MaterialTheme.typography.labelLarge)
                 }
             }
+        }
+
+        Text("Contenido que esta pantalla no reproduce", style = MaterialTheme.typography.titleLarge)
+        var hide4k by remember { mutableStateOf(repo.prefs.hide4k) }
+        var badCount by remember { mutableIntStateOf(repo.prefs.badKeyCount()) }
+        Row(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Panel)
+                .clickable { hide4k = !hide4k; repo.setHide4k(hide4k) }.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("Ocultar 4K / UHD / HEVC (H.265)", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "No se muestran en listas, búsqueda ni widgets los canales, películas y categorías con 4K, UHD, 2160p, " +
+                        "HEVC o H.265 en el nombre, ni los que ya fallaron en esta pantalla.",
+                    color = Muted, style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+            androidx.compose.material3.Switch(checked = hide4k, onCheckedChange = { hide4k = it; repo.setHide4k(it) })
+        }
+        if (badCount > 0) OutlinedButton(onClick = { repo.resetUnplayable(); badCount = 0 }, modifier = Modifier.heightIn(min = 64.dp)) {
+            Text("Volver a mostrar los $badCount que fallaron", style = MaterialTheme.typography.labelLarge)
         }
 
         Text("Formato de los canales en vivo", style = MaterialTheme.typography.titleLarge)
