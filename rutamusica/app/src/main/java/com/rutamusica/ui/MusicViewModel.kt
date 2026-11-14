@@ -20,6 +20,9 @@ import com.rutamusica.player.PlayerEngine
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 
 enum class Stage { Key, Login, Ready }
@@ -276,7 +279,7 @@ class MusicViewModel(app: Application) : AndroidViewModel(app), PlayerEngine.Lis
         duration = 0.0
         offsetMs = prefs.lyricsOffset(t.videoId)
         loadJob?.cancel()
-        if (videoMode && isArtOnly(t)) {
+        if (wantsMusicVideo(t)) {
             loadJob = viewModelScope.launch { playVideoId(musicVideoFor(t) ?: t.videoId, 0.0) }
         } else {
             playVideoId(t.videoId, 0.0)
@@ -336,27 +339,131 @@ class MusicViewModel(app: Application) : AndroidViewModel(app), PlayerEngine.Lis
 
     fun toggleVideoMode() {
         videoMode = !videoMode
+        if (videoMode) lyricsBig = false
         userInteracted()
+    }
+
+    // ---------- Video musical o portada (lo elige la persona; no cambia con la pantalla grande) ----------
+    var showMusicVideo by mutableStateOf(prefs.showMusicVideo)
+        private set
+
+    private fun wantsMusicVideo(t: Track) = showMusicVideo && !youTubeMode && isArtOnly(t)
+
+    /** Hay algo que cambiar: la canción es de las que solo traen portada. */
+    val canSwitchSource: Boolean get() = current?.let { isArtOnly(it) } == true && !youTubeMode
+
+    fun toggleMusicVideo() {
+        showMusicVideo = !showMusicVideo
+        prefs.showMusicVideo = showMusicVideo
         val t = current ?: return
-        if (videoMode && isArtOnly(t) && playingVideoId == t.videoId) {
-            val pos = position
-            loadJob?.cancel()
+        if (!isArtOnly(t) || youTubeMode) return
+        val pos = position
+        loadJob?.cancel()
+        if (showMusicVideo) {
             loadJob = viewModelScope.launch {
                 val mv = musicVideoFor(t)
                 if (mv != null && current == t) playVideoId(mv, pos)
                 else if (mv == null) playerMessage = "No encontré el video musical de esta canción; sigue la portada."
             }
+        } else if (playingVideoId != t.videoId) {
+            playVideoId(t.videoId, pos)
         }
     }
 
-    // ---------- Modo YouTube (la página de YouTube tal cual) ----------
+    // ---------- Letra en pantalla grande (para los de atrás) ----------
+    var lyricsBig by mutableStateOf(false)
+
+    // ---------- Modo Videos (nativo, filas tipo Netflix) ----------
+    data class VideoRow(val title: String, val items: List<Track>)
+
     var youTubeMode by mutableStateOf(prefs.youTubeMode)
         private set
+    /** En modo Videos: true mientras se ve un video a pantalla grande. */
+    var watching by mutableStateOf(false)
+        private set
+    var videoRows by mutableStateOf<List<VideoRow>>(emptyList())
+        private set
+    var videoLoading by mutableStateOf(false)
+        private set
+    var videoError by mutableStateOf<String?>(null)
+        private set
+    private var videoLoadedAt = 0L
 
     fun switchYouTubeMode(on: Boolean) {
-        if (on) pause()
+        pause()
+        watching = false
+        if (on) videoMode = false
         youTubeMode = on
         prefs.youTubeMode = on
+        if (on && (videoRows.isEmpty() || System.currentTimeMillis() - videoLoadedAt > 30 * 60_000)) loadVideoHome()
+    }
+
+    fun watch(items: List<Track>, index: Int) {
+        watching = true
+        videoMode = true
+        playFrom(items, index, forceShuffle = false)
+        userInteracted()
+    }
+
+    fun stopWatching() {
+        pause()
+        watching = false
+        videoMode = false
+    }
+
+    /** Arma las filas. Gasta poco cupo: ~1 por fila (unas 30 en total), y se guarda 30 minutos. */
+    fun loadVideoHome() {
+        videoLoading = true
+        videoError = null
+        viewModelScope.launch {
+            try {
+                val rows = mutableListOf<VideoRow>()
+                val subs = runCatching { yt.subscriptions(60) }.getOrDefault(emptyList())
+                val perChannel = coroutineScope {
+                    subs.take(25).map { ch -> async { ch to runCatching { yt.channelUploads(ch.id, 12) }.getOrDefault(emptyList()) } }.awaitAll()
+                }.filter { it.second.isNotEmpty() }
+                    .sortedByDescending { it.second.first().published }
+                val latest = perChannel.flatMap { it.second }.sortedByDescending { it.published }.take(40)
+                if (latest.isNotEmpty()) rows += VideoRow("Lo nuevo de tus suscripciones", latest)
+                runCatching { yt.popular("CR") }.getOrNull()?.takeIf { it.isNotEmpty() }?.let { rows += VideoRow("Tendencias en Costa Rica", it) }
+                val likesId = playlists.firstOrNull { it.special }?.id ?: "LL"
+                runCatching { yt.playlistItems(likesId, 40) }.getOrNull()?.takeIf { it.isNotEmpty() }?.let { rows += VideoRow("Tus Me gusta", it) }
+                runCatching { yt.popular("CR", category = "10") }.getOrNull()?.takeIf { it.isNotEmpty() }?.let { rows += VideoRow("Música popular", it) }
+                perChannel.forEach { (ch, vids) -> rows += VideoRow(ch.title, vids) }
+                playlists.filter { it.id in favorites && !it.special }.forEach { p ->
+                    runCatching { yt.playlistItems(p.id, 30) }.getOrNull()?.takeIf { it.isNotEmpty() }?.let { rows += VideoRow(p.title, it) }
+                }
+                if (rows.isEmpty()) videoError = "No pude leer videos de tu cuenta. Revisa el internet."
+                videoRows = rows
+                videoLoadedAt = System.currentTimeMillis()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                videoError = e.message ?: "No se pudieron cargar los videos."
+            } finally {
+                videoLoading = false
+            }
+        }
+    }
+
+    var videoSearchResults by mutableStateOf<List<Track>>(emptyList())
+        private set
+
+    fun searchVideos(q: String) {
+        if (q.isBlank()) { videoSearchResults = emptyList(); return }
+        videoLoading = true
+        viewModelScope.launch {
+            try {
+                videoSearchResults = yt.search(q.trim(), musicOnly = false)
+                if (videoSearchResults.isEmpty()) videoError = "No encontré videos con \"$q\"."
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                videoError = e.message ?: "No se pudo buscar."
+            } finally {
+                videoLoading = false
+            }
+        }
     }
 
     // ---------- Búsqueda ----------
@@ -524,6 +631,10 @@ class MusicViewModel(app: Application) : AndroidViewModel(app), PlayerEngine.Lis
         val t = current ?: return
         offsetMs = 0
         prefs.setLyricsOffset(t.videoId, 0)
+    }
+
+    init {
+        if (stage == Stage.Ready && youTubeMode) loadVideoHome()
     }
 
     override fun onCleared() {

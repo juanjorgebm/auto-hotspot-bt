@@ -40,6 +40,11 @@ class Prefs(context: Context) {
         get() = sp.getBoolean("music_only", true)
         set(v) = sp.edit().putBoolean("music_only", v).apply()
 
+    /** true = poner el video musical cuando la canción solo tiene la portada del disco. */
+    var showMusicVideo: Boolean
+        get() = sp.getBoolean("show_mv", true)
+        set(v) = sp.edit().putBoolean("show_mv", v).apply()
+
     var youTubeMode: Boolean
         get() = sp.getBoolean("yt_mode", false)
         set(v) = sp.edit().putBoolean("yt_mode", v).apply()

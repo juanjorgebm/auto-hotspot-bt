@@ -12,7 +12,9 @@ import java.io.IOException
 
 data class Playlist(val id: String, val title: String, val count: Int, val thumb: String?, val special: Boolean = false)
 
-data class Track(val videoId: String, val title: String, val channel: String, val thumb: String?)
+data class Track(val videoId: String, val title: String, val channel: String, val thumb: String?, val published: String = "")
+
+data class Channel(val id: String, val title: String, val thumb: String?)
 
 /**
  * Lectura de la cuenta con la YouTube Data API v3 oficial (solo lectura).
@@ -96,7 +98,7 @@ class YouTubeApi(context: Context, private val auth: GoogleAuth) {
         val out = mutableListOf<Track>()
         var page: String? = null
         do {
-            val p = mutableMapOf("part" to "snippet,contentDetails", "playlistId" to playlistId, "maxResults" to "50")
+            val p = mutableMapOf("part" to "snippet,contentDetails", "playlistId" to playlistId, "maxResults" to minOf(50, max).toString())
             page?.let { p["pageToken"] = it }
             val o = get("playlistItems", p)
             val items = o.optJSONArray("items")
@@ -110,6 +112,8 @@ class YouTubeApi(context: Context, private val auth: GoogleAuth) {
                     title = title,
                     channel = sn.optString("videoOwnerChannelTitle"),
                     thumb = thumb(sn),
+                    published = items.getJSONObject(i).optJSONObject("contentDetails")?.optString("videoPublishedAt")
+                        .orEmpty().ifBlank { sn.optString("publishedAt") },
                 )
             }
             page = o.optString("nextPageToken").takeIf { it.isNotBlank() }
@@ -145,9 +149,49 @@ class YouTubeApi(context: Context, private val auth: GoogleAuth) {
         return out
     }
 
+    /** Canales a los que la cuenta está suscrita (1 de cupo por cada 50). */
+    suspend fun subscriptions(max: Int = 100): List<Channel> {
+        val out = mutableListOf<Channel>()
+        var page: String? = null
+        do {
+            val p = mutableMapOf("part" to "snippet", "mine" to "true", "maxResults" to "50", "order" to "relevance")
+            page?.let { p["pageToken"] = it }
+            val o = get("subscriptions", p)
+            val items = o.optJSONArray("items")
+            for (i in 0 until (items?.length() ?: 0)) {
+                val sn = items!!.getJSONObject(i).optJSONObject("snippet") ?: continue
+                val id = sn.optJSONObject("resourceId")?.optString("channelId").orEmpty()
+                if (id.isNotBlank()) out += Channel(id, sn.optString("title"), thumb(sn))
+            }
+            page = o.optString("nextPageToken").takeIf { it.isNotBlank() }
+        } while (page != null && out.size < max)
+        return out
+    }
+
+    /** Últimos videos subidos por un canal (lista "UU…", 1 de cupo). */
+    suspend fun channelUploads(channelId: String, max: Int = 12): List<Track> {
+        if (!channelId.startsWith("UC")) return emptyList()
+        return playlistItems("UU" + channelId.substring(2), max)
+    }
+
+    /** Videos populares en el país (1 de cupo). [category] "10" = música. */
+    suspend fun popular(region: String = "CR", category: String? = null, max: Int = 25): List<Track> {
+        val p = mutableMapOf("part" to "snippet", "chart" to "mostPopular", "regionCode" to region, "maxResults" to max.toString())
+        category?.let { p["videoCategoryId"] = it }
+        val o = get("videos", p)
+        val items = o.optJSONArray("items")
+        val out = mutableListOf<Track>()
+        for (i in 0 until (items?.length() ?: 0)) {
+            val it = items!!.getJSONObject(i)
+            val sn = it.optJSONObject("snippet") ?: continue
+            out += Track(it.optString("id"), sn.optString("title"), sn.optString("channelTitle"), thumb(sn), sn.optString("publishedAt"))
+        }
+        return out
+    }
+
     private fun thumb(sn: JSONObject): String? {
         val t = sn.optJSONObject("thumbnails") ?: return null
-        for (k in listOf("medium", "high", "default")) {
+        for (k in listOf("high", "medium", "default")) {
             t.optJSONObject(k)?.optString("url")?.takeIf { it.isNotBlank() }?.let { return it }
         }
         return null

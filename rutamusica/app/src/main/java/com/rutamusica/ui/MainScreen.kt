@@ -31,7 +31,9 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
+import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SmartDisplay
@@ -70,14 +72,13 @@ import androidx.compose.ui.viewinterop.AndroidView
 import coil.compose.AsyncImage
 import com.rutamusica.data.Playlist
 import com.rutamusica.data.Track
-import com.rutamusica.player.YouTubeBrowser
 
 @Composable
-fun App(vm: MusicViewModel, playerView: View, browser: () -> YouTubeBrowser) {
+fun App(vm: MusicViewModel, playerView: View) {
     when (vm.stage) {
         Stage.Key -> KeyScreen(vm)
         Stage.Login -> LoginScreen(vm)
-        Stage.Ready -> if (vm.youTubeMode) YouTubeScreen(vm, remember { browser() }) else MainScreen(vm, playerView)
+        Stage.Ready -> if (vm.youTubeMode && !vm.watching) VideosScreen(vm) else MainScreen(vm, playerView)
     }
 }
 
@@ -87,17 +88,23 @@ fun MainScreen(vm: MusicViewModel, playerView: View) {
     val full = vm.videoMode && !vm.controlsVisible
     Row(Modifier.fillMaxSize().padding(if (full) 0.dp else 12.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
         // El reproductor siempre en el mismo lugar del árbol: así no se reinicia al cambiar de modo.
-        PlayerPane(vm, playerView, Modifier.weight(if (vm.videoMode) 1f else 0.42f).fillMaxHeight())
+        val big = vm.lyricsBig && !vm.videoMode
+        val paneMod = when {
+            vm.videoMode -> Modifier.weight(1f)
+            big -> Modifier.width(320.dp)   // video pequeño a un lado: la letra usa casi toda la pantalla
+            else -> Modifier.weight(0.42f)
+        }
+        PlayerPane(vm, playerView, paneMod.fillMaxHeight(), compact = big)
         if (!vm.videoMode) {
-            Column(Modifier.weight(0.58f).fillMaxHeight()) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(if (big) 1f else 0.58f).fillMaxHeight()) {
+                if (!big) Row(verticalAlignment = Alignment.CenterVertically) {
                     TabButton("Letra", Icons.Filled.Mic, vm.tab == Tab.Lyrics) { vm.tab = Tab.Lyrics }
                     Spacer(Modifier.width(8.dp))
                     TabButton("Mis listas", Icons.Filled.LibraryMusic, vm.tab == Tab.Library) { vm.tab = Tab.Library }
                     Spacer(Modifier.width(8.dp))
                     TabButton("Buscar", Icons.Filled.Search, vm.tab == Tab.Search) { vm.tab = Tab.Search }
                     Spacer(Modifier.width(8.dp))
-                    // Cambiar al modo YouTube (la página de YouTube como en el celular)
+                    // Cambiar al modo Videos (filas tipo Netflix)
                     Row(
                         Modifier.clip(RoundedCornerShape(28.dp)).background(Color(0xFFE53935))
                             .clickable { vm.switchYouTubeMode(true) }.padding(horizontal = 18.dp, vertical = 12.dp),
@@ -105,18 +112,18 @@ fun MainScreen(vm: MusicViewModel, playerView: View) {
                     ) {
                         Icon(Icons.Filled.SmartDisplay, null, tint = Color.White, modifier = Modifier.size(26.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text("YouTube", style = MaterialTheme.typography.labelLarge, color = Color.White)
+                        Text("Videos", style = MaterialTheme.typography.labelLarge, color = Color.White)
                     }
                     Spacer(Modifier.weight(1f))
                     IconButton(onClick = { showSettings = true }, modifier = Modifier.size(56.dp)) {
                         Icon(Icons.Filled.Settings, "Ajustes", tint = Muted, modifier = Modifier.size(32.dp))
                     }
                 }
-                Spacer(Modifier.height(8.dp))
+                if (!big) Spacer(Modifier.height(8.dp))
                 Box(
                     Modifier.fillMaxSize().clip(RoundedCornerShape(18.dp)).background(Panel)
                 ) {
-                    when (vm.tab) {
+                    if (big) LyricsPane(vm) else when (vm.tab) {
                         Tab.Lyrics -> LyricsPane(vm)
                         Tab.Library -> LibraryPane(vm)
                         Tab.Search -> SearchPane(vm)
@@ -147,7 +154,7 @@ private fun TabButton(text: String, icon: ImageVector, selected: Boolean, onClic
 // ------------------------------------------------------------------ Reproductor
 
 @Composable
-private fun PlayerPane(vm: MusicViewModel, playerView: View, modifier: Modifier) {
+private fun PlayerPane(vm: MusicViewModel, playerView: View, modifier: Modifier, compact: Boolean = false) {
     val track = vm.current
     val video = vm.videoMode
     Column(modifier) {
@@ -177,12 +184,17 @@ private fun PlayerPane(vm: MusicViewModel, playerView: View, modifier: Modifier)
         if (!video || vm.controlsVisible) Spacer(Modifier.height(6.dp))
         if (track != null && !video) {
             val g = remember(track) { vm.guessFor(track) }
-            Text(
-                g.title.ifBlank { track.title }, style = MaterialTheme.typography.titleMedium,
-                maxLines = 1, overflow = TextOverflow.Ellipsis,
-            )
-            Text(g.artist.ifBlank { track.channel }, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.bodySmall)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        g.title.ifBlank { track.title }, style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(g.artist.ifBlank { track.channel }, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.bodySmall)
+                }
+                if (!compact) SourceToggle(vm)
+            }
         }
         AnimatedVisibility(visible = !video || vm.controlsVisible) {
             Column {
@@ -190,7 +202,11 @@ private fun PlayerPane(vm: MusicViewModel, playerView: View, modifier: Modifier)
                     Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, maxLines = 2)
                 }
                 SeekBar(vm)
-                if (video) VideoControls(vm, track) else KaraokeControls(vm)
+                when {
+                    video -> VideoControls(vm, track)
+                    compact -> Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { TransportButtons(vm, big = false) }
+                    else -> KaraokeControls(vm)
+                }
             }
         }
     }
@@ -199,14 +215,38 @@ private fun PlayerPane(vm: MusicViewModel, playerView: View, modifier: Modifier)
 @Composable
 private fun ModeButton(vm: MusicViewModel) {
     val video = vm.videoMode
+    val watching = vm.youTubeMode && vm.watching
     Row(
         Modifier.clip(RoundedCornerShape(28.dp)).background(if (video) Accent else PanelHi)
-            .clickable { vm.toggleVideoMode() }.padding(horizontal = 16.dp, vertical = 12.dp),
+            .clickable { if (watching) vm.stopWatching() else vm.toggleVideoMode() }
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(if (video) Icons.Filled.Mic else Icons.Filled.Fullscreen, null, tint = Color.White, modifier = Modifier.size(28.dp))
+        Icon(
+            when { watching -> Icons.AutoMirrored.Filled.ArrowBack; video -> Icons.Filled.Mic; else -> Icons.Filled.Fullscreen },
+            null, tint = Color.White, modifier = Modifier.size(28.dp),
+        )
         Spacer(Modifier.width(6.dp))
-        Text(if (video) "Letra" else "Video", style = MaterialTheme.typography.labelLarge, color = Color.White)
+        Text(
+            when { watching -> "Videos"; video -> "Letra"; else -> "Video" },
+            style = MaterialTheme.typography.labelLarge, color = Color.White,
+        )
+    }
+}
+
+/** Elegir entre el video musical o la portada del disco (solo en canciones que traen portada). */
+@Composable
+private fun SourceToggle(vm: MusicViewModel) {
+    if (!vm.canSwitchSource) return
+    val mv = vm.showMusicVideo
+    Row(
+        Modifier.clip(RoundedCornerShape(24.dp)).background(PanelHi).clickable { vm.toggleMusicVideo() }
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(if (mv) Icons.Filled.Movie else Icons.Filled.Album, null, tint = Color.White, modifier = Modifier.size(24.dp))
+        Spacer(Modifier.width(6.dp))
+        Text(if (mv) "Video musical" else "Portada", style = MaterialTheme.typography.labelMedium, color = Color.White)
     }
 }
 
@@ -247,14 +287,16 @@ private fun VideoControls(vm: MusicViewModel, track: Track?) {
             if (track != null) {
                 val g = remember(track) { vm.guessFor(track) }
                 Spacer(Modifier.width(12.dp))
-                Column(Modifier.widthIn(max = 260.dp)) {
+                Column(Modifier.widthIn(max = 220.dp)) {
                     Text(g.title.ifBlank { track.title }, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(g.artist.ifBlank { track.channel }, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.bodySmall)
                 }
+
             }
         }
         Box(Modifier.align(Alignment.Center)) { TransportButtons(vm, big = true) }
+        Box(Modifier.align(Alignment.CenterEnd)) { SourceToggle(vm) }
     }
 }
 

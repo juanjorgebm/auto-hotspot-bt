@@ -21,6 +21,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
@@ -95,7 +97,14 @@ fun LyricsPane(vm: MusicViewModel) {
                 }
             }
             Spacer(Modifier.weight(1f))
-            if (found != null) {
+            // Letra en pantalla grande (para que los de atrás la lean mejor)
+            TextButton(onClick = { vm.lyricsBig = !vm.lyricsBig }) {
+                Icon(if (vm.lyricsBig) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen, null,
+                    tint = Color.White, modifier = Modifier.size(26.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(if (vm.lyricsBig) "Letra normal" else "Letra grande", color = Color.White, style = MaterialTheme.typography.labelMedium)
+            }
+            if (found != null && !vm.lyricsBig) {
                 TextButton(onClick = { showSearch = true }) {
                     Icon(Icons.Filled.Edit, null, tint = Muted, modifier = Modifier.size(20.dp))
                     Spacer(Modifier.width(6.dp))
@@ -138,7 +147,7 @@ private fun FoundLyrics(vm: MusicViewModel, lyrics: Lyrics) {
                 color = Muted, style = MaterialTheme.typography.bodySmall,
             )
             Spacer(Modifier.size(12.dp))
-            Text(lyrics.plain, fontSize = 24.sp, lineHeight = 34.sp)
+            Text(lyrics.plain, fontSize = if (vm.lyricsBig) 38.sp else 24.sp, lineHeight = if (vm.lyricsBig) 52.sp else 34.sp)
             Spacer(Modifier.size(12.dp))
             Text("Letra: ${lyrics.matched} · LRCLIB", color = Muted, style = MaterialTheme.typography.bodySmall)
         }
@@ -151,6 +160,7 @@ private fun FoundLyrics(vm: MusicViewModel, lyrics: Lyrics) {
 @Composable
 private fun Karaoke(vm: MusicViewModel, lines: List<LyricLine>, matched: String) {
     // Tiempo actual suavizado: el reproductor avisa cada 200 ms y aquí se interpola cuadro a cuadro.
+    val k = if (vm.lyricsBig) 1.6f else 1f   // tamaño de letra más grande en pantalla grande
     var nowMs by remember { mutableLongStateOf(0L) }
     val pos = vm.position
     val playing = vm.isPlaying
@@ -191,9 +201,9 @@ private fun Karaoke(vm: MusicViewModel, lines: List<LyricLine>, matched: String)
                 i == current -> {
                     val end = lines.getOrNull(i + 1)?.timeMs ?: (line.timeMs + 5000)
                     Box(Modifier.fillMaxWidth().clickable(onClick = seek)) {
-                        Text(text, fontSize = 34.sp, lineHeight = 42.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        Text(text, fontSize = (34 * k).sp, lineHeight = (42 * k).sp, fontWeight = FontWeight.Bold, color = Color.White)
                         Text(
-                            text, fontSize = 34.sp, lineHeight = 42.sp, fontWeight = FontWeight.Bold, color = Accent,
+                            text, fontSize = (34 * k).sp, lineHeight = (42 * k).sp, fontWeight = FontWeight.Bold, color = Accent,
                             modifier = Modifier.drawWithContent {
                                 val span = (end - line.timeMs).coerceAtLeast(1)
                                 val f = ((nowMs - offset - line.timeMs).toFloat() / span).coerceIn(0f, 1f)
@@ -203,11 +213,11 @@ private fun Karaoke(vm: MusicViewModel, lines: List<LyricLine>, matched: String)
                     }
                 }
                 i < current -> Text(
-                    text, fontSize = 22.sp, lineHeight = 28.sp, color = Muted.copy(alpha = 0.6f),
+                    text, fontSize = (22 * k).sp, lineHeight = (28 * k).sp, color = Muted.copy(alpha = 0.6f),
                     modifier = Modifier.fillMaxWidth().clickable(onClick = seek),
                 )
                 else -> Text(
-                    text, fontSize = 26.sp, lineHeight = 33.sp,
+                    text, fontSize = (26 * k).sp, lineHeight = (33 * k).sp,
                     color = if (i == current + 1) Color.White else Color.White.copy(alpha = 0.75f),
                     modifier = Modifier.fillMaxWidth().clickable(onClick = seek),
                 )
