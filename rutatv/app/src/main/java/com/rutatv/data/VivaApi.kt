@@ -19,12 +19,20 @@ import java.io.IOException
  */
 class VivaApi(private val token: String, private val client: OkHttpClient) {
 
-    var lastRaw: String = ""
-        private set
+    private val rawLog = StringBuilder()
+
+    /** Respuestas de la API (solo del usuario elegido) con contraseñas y tokens ocultos. */
+    val lastRaw: String get() = rawLog.toString()
+
+    fun note(text: String) {
+        rawLog.append(text).append("\n\n")
+    }
+
+    private var serversCache: List<JSONObject>? = null
 
     data class Pick(val id: String, val label: String, val detail: String, val obj: JSONObject)
 
-    private fun call(action: String, extra: Map<String, Any> = emptyMap()): Any? {
+    private fun call(action: String, extra: Map<String, Any> = emptyMap(), log: Boolean = true): Any? {
         val body = JSONObject().put("action", action)
         extra.forEach { (k, v) -> body.put(k, v) }
         val req = Request.Builder()
@@ -35,8 +43,15 @@ class VivaApi(private val token: String, private val client: OkHttpClient) {
             .build()
         client.newCall(req).execute().use { resp ->
             val text = resp.body?.string() ?: ""
-            lastRaw = "[$action] HTTP ${resp.code}\n" + text.take(6000)
             val parsed = try { JSONTokener(text).nextValue() } catch (e: Exception) { null }
+            if (log || !resp.isSuccessful) {
+                val shown = when (parsed) {
+                    is JSONObject -> (Dig.mask(parsed) as JSONObject).toString(2)
+                    is JSONArray -> (Dig.mask(parsed) as JSONArray).toString(2)
+                    else -> text
+                }
+                note("[$action] HTTP ${resp.code}\n" + shown.take(8000))
+            }
             if (!resp.isSuccessful) {
                 val msg = (parsed as? JSONObject)?.let { Dig.errorMessage(it) } ?: text.take(200)
                 throw IOException("VivaPlayer ($action): HTTP ${resp.code} $msg")
@@ -63,14 +78,14 @@ class VivaApi(private val token: String, private val client: OkHttpClient) {
      */
     fun findCustomer(username: String): Pick? {
         val wanted = username.trim().lowercase()
-        val raw = call("list_customers", mapOf("search" to username.trim(), "query" to username.trim(), "username" to username.trim()))
+        val raw = call("list_customers", mapOf("search" to username.trim(), "query" to username.trim(), "username" to username.trim()), log = false)
         val arr = Dig.firstObjectArray(raw, "customers", "data", "items", "results", "users")
         val match = arr?.let { Dig.objects(it) }?.firstOrNull { o ->
             listOf("username", "user", "login", "email", "name", "customer_username", "xtream_username")
                 .mapNotNull { k -> Dig.str(o, k)?.trim()?.lowercase() }
                 .any { it == wanted || it.substringBefore("@") == wanted }
         }
-        lastRaw = "[list_customers] " + (match?.toString(2)?.take(6000) ?: "no se encontró el usuario $username")
+        note("[list_customers] (solo tu usuario)\n" + (match?.let { (Dig.mask(it) as JSONObject).toString(2).take(8000) } ?: "no se encontró el usuario $username"))
         val o = match ?: return null
         val id = Dig.str(o, "id", "customer_id", "uuid", "user_id") ?: return null
         val label = Dig.str(o, "username", "name", "email") ?: username
@@ -99,28 +114,52 @@ class VivaApi(private val token: String, private val client: OkHttpClient) {
     }
 
     fun servers(): List<JSONObject> {
-        val arr = Dig.firstObjectArray(call("list_servers"), "servers", "data", "items", "results") ?: return emptyList()
-        return Dig.objects(arr)
+        serversCache?.let { return it }
+        val list = try {
+            Dig.firstObjectArray(call("list_servers"), "servers", "data", "items", "results")?.let { Dig.objects(it) } ?: emptyList()
+        } catch (e: IOException) {
+            emptyList()
+        }
+        serversCache = list
+        return list
     }
 
-    /** Saca servidor/usuario/contraseña de un perfil (consultando list_servers si hace falta). */
-    fun accountFromProfile(profile: JSONObject): XtreamAccount? {
+    /** Resultado de buscar credenciales: la cuenta o el motivo por el que faltan. */
+    data class AccountResult(val account: XtreamAccount?, val problem: String)
+
+    /**
+     * Saca servidor/usuario/contraseña de un perfil. Lo que falte en el perfil se busca en el
+     * cliente y, para el servidor, en list_servers (por id o, si solo hay uno, ese).
+     */
+    fun accountFromProfile(profile: JSONObject, customer: JSONObject? = null): AccountResult {
+        val sources = listOfNotNull(profile, customer)
         // 1) Un enlace M3U completo en cualquier campo.
-        Dig.allStrings(profile).firstOrNull { it.contains("username=") && it.contains("password=") }?.let { url ->
-            XtreamApi.parsePlaylistUrl(url)?.let { return it }
-        }
-        val user = Dig.str(profile, "username", "xtream_username", "user", "login", "xtream_user") ?: return null
-        val pass = Dig.str(profile, "password", "xtream_password", "pass", "xtream_pass") ?: return null
-        var server = Dig.serverText(profile)
-        if (server == null) {
-            val serverId = Dig.str(profile, "server_id", "xtream_server_id", "serverId")
-            if (serverId != null) {
-                val s = servers().firstOrNull { Dig.str(it, "id", "server_id", "uuid") == serverId }
-                if (s != null) server = Dig.serverText(s)
+        for (src in sources) {
+            Dig.allStrings(src).firstOrNull { it.contains("username=") && it.contains("password=") }?.let { url ->
+                XtreamApi.parsePlaylistUrl(url)?.let { return AccountResult(it, "") }
             }
         }
-        if (server == null) return null
-        return XtreamAccount(XtreamApi.normalizeServer(server), user, pass)
+        fun first(vararg keys: String): String? = sources.firstNotNullOfOrNull { Dig.str(it, *keys) }
+        val user = first(*Dig.USER_KEYS)
+        val pass = first(*Dig.PASS_KEYS)
+        var server = sources.firstNotNullOfOrNull { Dig.serverText(it) }
+        if (server == null) {
+            val all = servers()
+            val ref = first("server_id", "xtream_server_id", "serverId", "dns_id", "server_uuid", "xtream_server")
+            val byId = ref?.let { r -> all.firstOrNull { s -> listOf("id", "server_id", "uuid", "_id").any { Dig.str(s, it) == r } } }
+            val chosen = byId ?: all.singleOrNull()
+            if (chosen != null) server = Dig.serverText(chosen)
+        }
+        val missing = listOfNotNull(
+            if (server == null) "servidor" else null,
+            if (user == null) "usuario" else null,
+            if (pass == null) "contraseña" else null,
+        )
+        if (missing.isNotEmpty()) {
+            val keys = profile.keys().asSequence().toList().joinToString(", ")
+            return AccountResult(null, "falta ${missing.joinToString(", ")} (campos del perfil: $keys)")
+        }
+        return AccountResult(XtreamAccount(XtreamApi.normalizeServer(server!!), user!!, pass!!), "")
     }
 
     /** Favoritos guardados en VivaPlayer para ese cliente (solo lectura). */
@@ -138,6 +177,25 @@ class VivaApi(private val token: String, private val client: OkHttpClient) {
 
 /** Utilidades para buscar datos en JSON de forma tolerante. */
 object Dig {
+    val USER_KEYS = arrayOf("username", "xtream_username", "xtream_user", "user_name", "user", "login", "usuario", "account", "line_username")
+    val PASS_KEYS = arrayOf("password", "xtream_password", "xtream_pass", "pass", "passwd", "pwd", "contrasena", "line_password", "secret")
+
+    private val SECRET = Regex("pass|token|secret|pwd|contras", RegexOption.IGNORE_CASE)
+
+    /** Copia del JSON con contraseñas/tokens ocultos (se ve el nombre del campo y el largo). */
+    fun mask(v: Any?): Any? = when (v) {
+        is JSONObject -> JSONObject().also { out ->
+            v.keys().forEach { k ->
+                val c = v.opt(k)
+                out.put(k, if (SECRET.containsMatchIn(k) && c != null && c !is JSONObject && c !is JSONArray && c != JSONObject.NULL)
+                    "•••(${c.toString().length})" else mask(c))
+            }
+        }
+        is JSONArray -> JSONArray().also { out -> for (i in 0 until v.length()) out.put(mask(v.opt(i))) }
+        is String -> if (v.contains("password=")) v.replace(Regex("password=[^&]*"), "password=•••") else v
+        else -> v
+    }
+
     fun objects(arr: JSONArray): List<JSONObject> = (0 until arr.length()).mapNotNull { arr.optJSONObject(it) }
 
     /** Primer arreglo de objetos que encuentre, mirando primero las claves preferidas. */
@@ -196,7 +254,11 @@ object Dig {
             val child = o.optJSONObject(key)
             if (child != null) serverText(child)?.let { return it }
         }
-        val url = direct(o, "server_url", "url", "host", "dns", "domain", "base_url", "xtream_url", "portal", "portal_url", "server")
+        val hostLike = Regex("^(https?://)?[A-Za-z0-9.-]+\\.[A-Za-z]{2,}(:\\d+)?(/.*)?$|^(https?://)?\\d{1,3}(\\.\\d{1,3}){3}(:\\d+)?(/.*)?$")
+        val url = listOf("server_url", "url", "host", "dns", "domain", "base_url", "xtream_url", "portal", "portal_url",
+            "server", "server_host", "server_address", "address", "hostname")
+            .mapNotNull { direct(o, it) }
+            .firstOrNull { it.contains("username=") || hostLike.matches(it.trim()) }
             ?: return null
         if (url.contains("username=")) XtreamApi.parsePlaylistUrl(url)?.let { return it.server }
         var s = url

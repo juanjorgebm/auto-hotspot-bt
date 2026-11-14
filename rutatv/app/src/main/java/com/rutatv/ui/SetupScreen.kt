@@ -90,6 +90,7 @@ private fun VivaImport(onDone: () -> Unit) {
     var raw by remember { mutableStateOf("") }
     var showRaw by remember { mutableStateOf(false) }
     val log = remember { mutableStateListOf<String>() }
+    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
 
     Row(Modifier.fillMaxSize()) {
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
@@ -153,8 +154,14 @@ private fun VivaImport(onDone: () -> Unit) {
             log.forEach { Text("• $it", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 2.dp)) }
             if (raw.isNotEmpty()) {
                 Spacer(Modifier.height(12.dp))
-                OutlinedButton(onClick = { showRaw = !showRaw }) {
-                    Text(if (showRaw) "Ocultar detalles técnicos" else "Ver detalles técnicos")
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedButton(onClick = { showRaw = !showRaw }) {
+                        Text(if (showRaw) "Ocultar detalles técnicos" else "Ver detalles técnicos")
+                    }
+                    OutlinedButton(onClick = {
+                        clipboard.setText(androidx.compose.ui.text.AnnotatedString(raw))
+                        log.add("Detalles copiados (las contraseñas y el token van ocultos). Pégalos en el chat.")
+                    }) { Text("Copiar detalles") }
                 }
                 if (showRaw) SelectionContainer {
                     Text(raw, fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = Muted)
@@ -181,9 +188,14 @@ private suspend fun importFromViva(viva: VivaApi, username: String, log: (String
     }
     var saved = 0
     for (p in picks) {
-        val acc = try { viva.accountFromProfile(p.obj) } catch (e: Exception) { null }
+        val res = try {
+            viva.accountFromProfile(p.obj, customer.obj)
+        } catch (e: Exception) {
+            VivaApi.AccountResult(null, friendlyError(e))
+        }
+        val acc = res.account
         if (acc == null || !acc.isComplete) {
-            log("${p.label}: no trae servidor/usuario/contraseña Xtream (mira los detalles técnicos).")
+            log("${p.label}: ${res.problem}")
             continue
         }
         val profile = Profile(id = "viva_${p.id}", name = p.label, account = acc, vivaProfileId = p.id)
