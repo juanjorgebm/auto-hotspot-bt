@@ -1,0 +1,9 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- nota musical -->
+    <path android:fillColor="#FFE94B7A"
+        android:pathData="M46,32L76,26V66a8,8 0,1 1,-6 -7.7V38L52,41.6V72a8,8 0,1 1,-6 -7.7z"/>
+    <!-- micrófono / letra -->
+    <path android:fillColor="#FFFFFFFF" android:pathData="M30,80h48v4H30z"/>
+</vector>

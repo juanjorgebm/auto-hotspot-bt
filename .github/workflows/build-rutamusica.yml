@@ -1,0 +1,47 @@
+name: Build RutaMusica
+
+on:
+  push:
+    branches: [claude/project-thread-3ul64s]
+    paths: ["rutamusica/**", ".github/workflows/build-rutamusica.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: rutamusica
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Compilar APK
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleDebug -PversionCode=${{ github.run_number }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rutamusica-debug
+          path: rutamusica/app/build/outputs/apk/debug/*.apk
+      - name: Publicar release "rutamusica-latest" (la usa el actualizador de la app)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk rutamusica.apk
+          cat > version.json <<JSON
+          {"versionCode": ${{ github.run_number }}, "versionName": "1.0.${{ github.run_number }}", "notes": "$(git log -1 --pretty=%s | tr -d '"\\')", "apk": "https://github.com/${{ github.repository }}/releases/download/rutamusica-latest/rutamusica.apk"}
+          JSON
+          cat version.json
+          gh release delete rutamusica-latest --yes --cleanup-tag || true
+          gh release create rutamusica-latest rutamusica.apk version.json \
+            --target ${{ github.sha }} \
+            --title "RutaMúsica (último build)" \
+            --notes "APK de RutaMúsica compilado desde ${{ github.sha }}." \
+            --prerelease
