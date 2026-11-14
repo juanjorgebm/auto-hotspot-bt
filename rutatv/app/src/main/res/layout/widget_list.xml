@@ -27,7 +27,6 @@
             android:paddingLeft="8dp"
             android:textColor="#FFFF8A3D"
             android:textSize="20sp"
-            android:textStyle="bold"
             android:singleLine="true" />
     </LinearLayout>
 

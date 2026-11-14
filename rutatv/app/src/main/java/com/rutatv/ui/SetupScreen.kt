@@ -275,7 +275,7 @@ private suspend fun saveVivaProfile(viva: VivaApi, customerId: String, p: VivaAp
     val profile = Profile(id = "viva_${p.id}", name = p.label, account = acc, vivaProfileId = p.id)
     repo.upsertProfile(profile)
     try {
-        val favs = viva.favorites(customerId, p.id)
+        val favs = viva.favorites(customerId, p.id, p.label)
         val n = repo.importVivaFavorites(profile, favs)
         log("${p.label}: perfil guardado, $n favorito(s).")
     } catch (e: Exception) {
@@ -294,7 +294,7 @@ suspend fun refreshVivaFavorites(token: String, profile: Profile): Pair<String, 
                 ?: return "No se encontró el usuario de cliente." to viva.lastRaw
             repo.prefs.vivaCustomerId = customerId
         }
-        val favs = withContext(Dispatchers.IO) { viva.favorites(customerId, profile.vivaProfileId.ifBlank { null }) }
+        val favs = withContext(Dispatchers.IO) { viva.favorites(customerId, profile.vivaProfileId.ifBlank { null }, profile.name) }
         val n = repo.importVivaFavorites(profile, favs)
         "$n favorito(s) actualizados desde VivaPlayer." to viva.lastRaw
     } catch (e: Throwable) {

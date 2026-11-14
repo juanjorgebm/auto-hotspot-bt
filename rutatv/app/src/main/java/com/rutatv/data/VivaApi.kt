@@ -171,11 +171,11 @@ class VivaApi(private val token: String, private val client: OkHttpClient) {
     }
 
     /** Favoritos guardados en VivaPlayer para ese cliente (solo lectura). */
-    fun favorites(customerId: String, profileId: String?): List<Item> {
+    fun favorites(customerId: String, profileId: String?, profileName: String? = null): List<Item> {
         val params = HashMap(idParams("customer", customerId))
         if (!profileId.isNullOrBlank()) params.putAll(idParams("profile", profileId))
         val raw = call("export_customer_favorites", params)
-        return Dig.favoriteItems(raw, profileId)
+        return Dig.favoriteItems(raw, profileId, profileName)
     }
 
     companion object {
@@ -200,7 +200,8 @@ object Dig {
             }
         }
         is JSONArray -> JSONArray().also { out -> for (i in 0 until v.length()) out.put(mask(v.opt(i))) }
-        is String -> if (v.contains("password=")) v.replace(Regex("password=[^&]*"), "password=•••") else v
+        is String -> v.replace(Regex("password=[^&]*"), "password=•••")
+            .replace(Regex("(/(live|movie|series)/[^/]+/)[^/]+/"), "$1•••/")
         else -> v
     }
 
@@ -314,7 +315,7 @@ object Dig {
     }
 
     /** Recorre cualquier JSON y saca los elementos que parecen favoritos. */
-    fun favoriteItems(v: Any?, profileId: String? = null): List<Item> {
+    fun favoriteItems(v: Any?, profileId: String? = null, profileName: String? = null): List<Item> {
         val out = LinkedHashMap<String, Item>()
         fun walk(x: Any?, pathKind: Kind?, depth: Int) {
             if (depth > 6 || x == null) return
@@ -331,6 +332,10 @@ object Dig {
                     // Si la respuesta trae favoritos de varios perfiles, se queda solo con los del perfil pedido.
                     val owner = direct(x, "profile_id", "profileId")
                     if (!profileId.isNullOrBlank() && owner != null && owner != profileId) return
+                    // VivaPlayer marca cada favorito con el NOMBRE del perfil ("profile": "Juan Jorge").
+                    val ownerName = x.opt("profile") as? String
+                    if (!profileName.isNullOrBlank() && !ownerName.isNullOrBlank() &&
+                        !ownerName.trim().equals(profileName.trim(), ignoreCase = true)) return
                     val name = direct(x, *NAME_KEYS)
                     val id = direct(x, *ID_KEYS)
                     val isPerson = x.has("photo") || x.has("email") || x.has("avatar") || x.has("is_active")
@@ -342,13 +347,30 @@ object Dig {
                         val kind = kindFrom(direct(x, *TYPE_KEYS))
                             ?: if (direct(x, "series_id", "seriesId") != null && direct(x, "stream_id") == null) Kind.SERIES else null
                             ?: pathKind ?: Kind.LIVE
-                        val streamId = if (kind == Kind.SERIES) direct(x, "series_id", "seriesId", *ID_KEYS)!!
+                        var streamId = if (kind == Kind.SERIES) direct(x, "series_id", "seriesId", *ID_KEYS)!!
                         else (specificId ?: id!!)
+                        var finalKind = kind
+                        var urlExt: String? = null
+                        // VivaPlayer guarda en stream_id la URL completa: .../live/usuario/clave/476078.ts
+                        if (streamId.contains("/")) {
+                            val path = streamId.substringBefore("?").trimEnd('/')
+                            val file = path.substringAfterLast('/')
+                            val segs = path.split('/')
+                            finalKind = when {
+                                segs.contains("movie") -> Kind.MOVIE
+                                segs.contains("series") -> Kind.EPISODE
+                                segs.contains("live") -> Kind.LIVE
+                                else -> kind
+                            }
+                            urlExt = file.substringAfterLast('.', "").ifBlank { null }
+                            streamId = file.substringBeforeLast('.')
+                        }
                         val item = Item(
-                            kind = kind, id = streamId, name = name ?: "#$streamId",
+                            kind = finalKind, id = streamId, name = name ?: "#$streamId",
                             icon = direct(x, "stream_icon", "icon", "logo", "cover", "image", "poster", "thumbnail")
                                 ?.takeIf { it.startsWith("http") },
-                            ext = direct(x, "container_extension", "extension", "ext"),
+                            ext = direct(x, "container_extension", "extension", "ext")
+                                ?: urlExt?.takeIf { finalKind != Kind.LIVE },
                             categoryId = direct(x, "category_id"),
                             fromViva = true,
                         )

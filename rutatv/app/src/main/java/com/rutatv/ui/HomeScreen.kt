@@ -201,7 +201,7 @@ private fun Browse(kind: Kind) {
     }
 
     val (cats, retryCats) = rememberLoad(kind) { repo.categories(kind) }
-    val myFavs = favorites.filter { it.kind == kind }
+    val myFavs = favorites.filter { it.kind == kind || (kind == Kind.SERIES && it.kind == Kind.EPISODE) }
     val myRecents = recents.filter { it.kind == kind || (kind == Kind.SERIES && it.kind == Kind.EPISODE) }
 
     LaunchedEffect(cats.data) {
@@ -375,14 +375,14 @@ private fun FavoritesScreen() {
             itemsIndexed(kinds) { i, (k, label) ->
                 FilterChip(
                     selected = tab == i, onClick = { tab = i },
-                    label = { Text("$label (${favorites.count { it.kind == k }})", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(12.dp)) },
+                    label = { Text("$label (${favorites.count { it.kind == k || (k == Kind.SERIES && it.kind == Kind.EPISODE) }})", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(12.dp)) },
                     colors = FilterChipDefaults.filterChipColors(selectedContainerColor = Orange, selectedLabelColor = Color(0xFF1A0E05)),
                 )
             }
         }
         Spacer(Modifier.height(6.dp))
         val kind = kinds[tab].first
-        val list = favorites.filter { it.kind == kind }
+        val list = favorites.filter { it.kind == kind || (kind == Kind.SERIES && it.kind == Kind.EPISODE) }
         if (list.isEmpty()) EmptyBox("No hay favoritos en esta sección.\nLos de VivaPlayer se importan desde Ajustes.")
         else ItemsView(kind, list, open)
     }
