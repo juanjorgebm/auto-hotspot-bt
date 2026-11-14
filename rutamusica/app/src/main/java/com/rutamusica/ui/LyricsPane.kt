@@ -186,7 +186,7 @@ private fun Karaoke(vm: MusicViewModel, lines: List<LyricLine>, matched: String)
     ) {
         itemsIndexed(lines) { i, line ->
             val text = line.text.ifBlank { "♪ ♪ ♪" }
-            val seek = { vm.seekTo(((line.timeMs + offset) / 1000.0).coerceAtLeast(0.0)) }
+            val seek: () -> Unit = { vm.seekTo(((line.timeMs + offset) / 1000.0).coerceAtLeast(0.0)) }
             when {
                 i == current -> {
                     val end = lines.getOrNull(i + 1)?.timeMs ?: (line.timeMs + 5000)

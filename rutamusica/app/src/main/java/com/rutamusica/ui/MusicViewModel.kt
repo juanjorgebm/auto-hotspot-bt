@@ -265,9 +265,9 @@ class MusicViewModel(app: Application) : AndroidViewModel(app), YtPlayer.Listene
         if (isPlaying) player?.pause() else player?.play()
     }
 
-    fun pause() = player?.pause()
+    fun pause() { player?.pause() }
 
-    fun seekTo(sec: Double) = player?.seek(sec)
+    fun seekTo(sec: Double) { player?.seek(sec) }
 
     var playerReady by mutableStateOf(false)
         private set
