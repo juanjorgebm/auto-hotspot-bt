@@ -33,12 +33,21 @@ enum class WidgetType(val title: String, val empty: String, val grid: Boolean) {
     FAV_CHANNELS("★ Canales favoritos", "Sin canales favoritos.\nMárcalos con la ☆ en la app.", false),
     RECENT_SERIES("Series recientes", "Aún no has visto series.", false),
     NEW_MOVIES("Películas nuevas", "Cargando películas nuevas…", true),
+    EVENTS("Eventos deportivos", "Cargando eventos…", false),
 }
+
+/** Categorías de TV en vivo que puede mostrar el widget de eventos (se cambia con ⇄). */
+val EVENT_CATEGORIES = listOf("DEPORTES DIARIOS VIP", "EVENTOS DEPORTIVOS")
+
+const val ACTION_REFRESH = "com.rutatv.widget.REFRESH"
+const val ACTION_SWITCH = "com.rutatv.widget.SWITCH"
 
 object Widgets {
     private val providers = listOf(
-        FavChannelsWidget::class.java, RecentSeriesWidget::class.java, NewMoviesWidget::class.java,
+        FavChannelsWidget::class.java, RecentSeriesWidget::class.java, NewMoviesWidget::class.java, EventsWidget::class.java,
     )
+
+    fun eventChoice(widgetId: Int) = RutaApp.repo.prefs.int("evt_choice_$widgetId") % EVENT_CATEGORIES.size
 
     /** Avisa a los widgets que cambiaron favoritos, recientes o el perfil. */
     fun refresh(context: Context) {
@@ -57,7 +66,7 @@ object Widgets {
     }
 
     /** Lista que muestra cada widget. [network] = se permite descargar (solo para películas nuevas). */
-    fun loadItems(context: Context, type: WidgetType, network: Boolean): List<Item> {
+    fun loadItems(context: Context, type: WidgetType, network: Boolean, widgetId: Int = 0): List<Item> {
         val repo = RutaApp.repo
         val prefs = repo.prefs
         val profile = repo.active.value ?: repo.lastProfile() ?: return emptyList()
@@ -75,6 +84,19 @@ object Widgets {
                         cached
                     }
                 } else cached
+            }
+            WidgetType.EVENTS -> {
+                val cacheKey = "evt_items_$widgetId"
+                if (!network) return prefs.items(cacheKey)
+                try {
+                    val api = XtreamApi(profile.account, repo.http)
+                    val wanted = com.rutatv.data.Repo.normalize(EVENT_CATEGORIES[eventChoice(widgetId)])
+                    val cat = api.categories(Kind.LIVE).firstOrNull { com.rutatv.data.Repo.normalize(it.name).contains(wanted) }
+                        ?: return emptyList<Item>().also { prefs.setItems(cacheKey, it) }
+                    api.streams(Kind.LIVE, cat.id).also { prefs.setItems(cacheKey, it) }
+                } catch (e: Exception) {
+                    prefs.items(cacheKey)
+                }
             }
         }
     }
@@ -95,7 +117,21 @@ abstract class BaseWidget(private val type: WidgetType) : AppWidgetProvider() {
     override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) {
         ids.forEach { id ->
             val views = RemoteViews(context.packageName, R.layout.widget_list)
-            views.setTextViewText(R.id.widget_title, type.title)
+            val title = if (type == WidgetType.EVENTS) EVENT_CATEGORIES[Widgets.eventChoice(id)] else type.title
+            views.setTextViewText(R.id.widget_title, title)
+            val showButtons = type == WidgetType.EVENTS
+            views.setViewVisibility(R.id.widget_refresh, if (showButtons) View.VISIBLE else View.GONE)
+            views.setViewVisibility(R.id.widget_switch, if (showButtons) View.VISIBLE else View.GONE)
+            if (showButtons) {
+                val immutableFlag = if (Build.VERSION.SDK_INT >= 23) PendingIntent.FLAG_IMMUTABLE else 0
+                fun action(a: String, code: Int) = PendingIntent.getBroadcast(
+                    context, code,
+                    Intent(context, javaClass).setAction(a).putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id),
+                    PendingIntent.FLAG_UPDATE_CURRENT or immutableFlag,
+                )
+                views.setOnClickPendingIntent(R.id.widget_refresh, action(ACTION_REFRESH, id * 10 + 1))
+                views.setOnClickPendingIntent(R.id.widget_switch, action(ACTION_SWITCH, id * 10 + 2))
+            }
             views.setTextViewText(R.id.widget_empty, type.empty)
 
             val svc = Intent(context, WidgetService::class.java)
@@ -133,15 +169,34 @@ class FavChannelsWidget : BaseWidget(WidgetType.FAV_CHANNELS)
 class RecentSeriesWidget : BaseWidget(WidgetType.RECENT_SERIES)
 class NewMoviesWidget : BaseWidget(WidgetType.NEW_MOVIES)
 
+/** Eventos deportivos del día, con botones ⟳ (actualizar) y ⇄ (cambiar de categoría). */
+class EventsWidget : BaseWidget(WidgetType.EVENTS) {
+    override fun onReceive(context: Context, intent: Intent) {
+        val id = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID)
+        if (id != AppWidgetManager.INVALID_APPWIDGET_ID && (intent.action == ACTION_REFRESH || intent.action == ACTION_SWITCH)) {
+            val prefs = RutaApp.repo.prefs
+            if (intent.action == ACTION_SWITCH) prefs.setInt("evt_choice_$id", prefs.int("evt_choice_$id") + 1)
+            val m = AppWidgetManager.getInstance(context)
+            onUpdate(context, m, intArrayOf(id))
+            return
+        }
+        super.onReceive(context, intent)
+    }
+}
+
 class WidgetService : RemoteViewsService() {
     override fun onGetViewFactory(intent: Intent): RemoteViewsFactory =
-        Factory(applicationContext, WidgetType.valueOf(intent.getStringExtra("type") ?: WidgetType.FAV_CHANNELS.name))
+        Factory(
+            applicationContext,
+            WidgetType.valueOf(intent.getStringExtra("type") ?: WidgetType.FAV_CHANNELS.name),
+            intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, 0),
+        )
 
-    private class Factory(val context: Context, val type: WidgetType) : RemoteViewsFactory {
+    private class Factory(val context: Context, val type: WidgetType, val widgetId: Int) : RemoteViewsFactory {
         private var items: List<Item> = emptyList()
 
         override fun onCreate() {}
-        override fun onDataSetChanged() { items = Widgets.loadItems(context, type, network = true) }
+        override fun onDataSetChanged() { items = Widgets.loadItems(context, type, network = true, widgetId = widgetId) }
         override fun onDestroy() {}
         override fun getCount() = items.size
         override fun getLoadingView(): RemoteViews? = null
@@ -159,7 +214,7 @@ class WidgetService : RemoteViewsService() {
             if (bmp != null) v.setImageViewBitmap(R.id.item_image, bmp) else v.setImageViewResource(R.id.item_image, R.drawable.ic_launcher_foreground)
             v.setOnClickFillInIntent(
                 R.id.item_root,
-                Intent().putExtra("type", type.name).putExtra("item", item.toJson().toString()),
+                Intent().putExtra("type", type.name).putExtra("item", item.toJson().toString()).putExtra("wid", widgetId),
             )
             return v
         }
@@ -176,7 +231,7 @@ class WidgetLaunchActivity : Activity() {
             val item = intent.getStringExtra("item")?.let { Item.fromJson(JSONObject(it)) }
             val type = intent.getStringExtra("type")?.let { WidgetType.valueOf(it) }
             if (item != null && type != null && repo.active.value != null) {
-                val list = Widgets.loadItems(this, type, network = false).ifEmpty { listOf(item) }
+                val list = Widgets.loadItems(this, type, network = false, widgetId = intent.getIntExtra("wid", 0)).ifEmpty { listOf(item) }
                 val idx = list.indexOfFirst { it.key == item.key }
                 if (idx >= 0) PlayQueue.start(this, list, idx) else PlayQueue.start(this, listOf(item), 0)
             } else {

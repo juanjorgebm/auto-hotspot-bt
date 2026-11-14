@@ -80,6 +80,14 @@ class Prefs(context: Context) {
         get() = sp.getString("last_crash", "") ?: ""
         set(v) = sp.edit().putString("last_crash", v).apply()
 
+    // Genéricos (widgets)
+    fun items(name: String) = readItems(name)
+    fun setItems(name: String, v: List<Item>) = writeItems(name, v)
+    fun int(name: String, def: Int = 0) = sp.getInt(name, def)
+    fun setInt(name: String, v: Int) = sp.edit().putInt(name, v).apply()
+    fun str(name: String) = sp.getString(name, "") ?: ""
+    fun setStr(name: String, v: String) = sp.edit().putString(name, v).apply()
+
     fun deleteProfileData(pid: String) {
         val e = sp.edit().remove("favorites_$pid").remove("recents_$pid")
         sp.all.keys.filter { it.startsWith("pos_${pid}_") }.forEach { e.remove(it) }
