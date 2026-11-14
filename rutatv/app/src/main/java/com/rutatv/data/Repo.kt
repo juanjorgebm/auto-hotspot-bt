@@ -141,7 +141,7 @@ class Repo(context: Context) {
         val local = prefs.favorites(profile.id).filter { !it.fromViva }
         val merged = LinkedHashMap<String, Item>()
         fixed.forEach { merged[it.key] = it }
-        local.forEach { merged.putIfAbsent(it.key, it) }
+        local.forEach { if (!merged.containsKey(it.key)) merged[it.key] = it }
         val result = merged.values.toList()
         prefs.setFavorites(profile.id, result)
         if (profile.id == pid) _favorites.value = result

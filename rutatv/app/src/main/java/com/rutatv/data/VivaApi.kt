@@ -325,7 +325,7 @@ object Dig {
                     // Listas de ids sueltos, p. ej. {"live": [123, 456]}
                     if ((e is Number || (e is String && e.isNotBlank() && e.all { it.isDigit() })) && pathKind != null) {
                         val item = Item(kind = pathKind, id = e.toString(), name = "#$e", fromViva = true)
-                        out.putIfAbsent(item.key, item)
+                        if (!out.containsKey(item.key)) out[item.key] = item
                     } else walk(e, pathKind, depth + 1)
                 }
                 is JSONObject -> {
@@ -374,7 +374,7 @@ object Dig {
                             categoryId = direct(x, "category_id"),
                             fromViva = true,
                         )
-                        out.putIfAbsent(item.key, item)
+                        if (!out.containsKey(item.key)) out[item.key] = item
                     } else {
                         x.keys().asSequence().toList().forEach { k ->
                             walk(x.opt(k), kindFrom(k) ?: pathKind, depth + 1)

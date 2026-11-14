@@ -36,6 +36,8 @@ android {
     }
 
     compileOptions {
+        // Permite usar APIs de Java 8+ (Map.putIfAbsent, etc.) también en Android 5.1.
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -52,6 +54,7 @@ android {
 }
 
 dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
     // Todas estas versiones siguen soportando minSdk 21/22.
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.activity:activity-compose:1.9.3")
