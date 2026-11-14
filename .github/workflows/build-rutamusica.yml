@@ -25,7 +25,11 @@ jobs:
       - name: Compilar APK
         run: |
           chmod +x gradlew
-          ./gradlew --no-daemon assembleDebug -PversionCode=${{ github.run_number }}
+          set -o pipefail
+          ./gradlew --no-daemon assembleDebug -PversionCode=${{ github.run_number }} 2>&1 | tee build.log
+      - name: Errores de compilación (si falló)
+        if: failure()
+        run: grep -E "^e: |error:|What went wrong" -A2 build.log | head -60
       - uses: actions/upload-artifact@v4
         with:
           name: rutamusica-debug
