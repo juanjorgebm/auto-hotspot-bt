@@ -148,6 +148,44 @@ class XtreamApi(private val account: XtreamAccount, private val client: OkHttpCl
         }
     }
 
+    /** Las [limit] películas agregadas más recientemente (campo "added" del catálogo). */
+    fun latestMovies(limit: Int): List<Item> {
+        val heap = java.util.PriorityQueue<Pair<Long, Item>>(limit + 1, compareBy { it.first })
+        get(apiUrl("get_vod_streams")) { r ->
+            if (r.peek() != JsonToken.BEGIN_ARRAY) { r.skipValue(); return@get }
+            r.beginArray()
+            while (r.hasNext()) {
+                if (r.peek() != JsonToken.BEGIN_OBJECT) { r.skipValue(); continue }
+                var id: String? = null
+                var name = ""
+                var icon: String? = null
+                var ext: String? = null
+                var rating: String? = null
+                var added = 0L
+                r.beginObject()
+                while (r.hasNext()) {
+                    when (r.nextName()) {
+                        "stream_id" -> id = r.anyString()
+                        "name" -> name = r.anyString() ?: ""
+                        "stream_icon" -> icon = r.anyString()
+                        "container_extension" -> ext = r.anyString()
+                        "rating" -> rating = r.anyString()
+                        "added" -> added = r.anyString()?.toLongOrNull() ?: 0L
+                        else -> r.skipValue()
+                    }
+                }
+                r.endObject()
+                if (id != null && (heap.size < limit || added > heap.peek()!!.first)) {
+                    heap.add(added to Item(Kind.MOVIE, id, name.trim(), icon?.takeIf { it.startsWith("http") },
+                        ext?.ifBlank { null }, null, rating?.takeIf { it.isNotBlank() && it != "0" }))
+                    if (heap.size > limit) heap.poll()
+                }
+            }
+            r.endArray()
+        }
+        return heap.sortedByDescending { it.first }.map { it.second }
+    }
+
     fun seriesInfo(seriesId: String): SeriesInfo {
         val text = getText(apiUrl("get_series_info", "series_id" to seriesId))
         val root = JSONTokener(text).nextValue() as? JSONObject

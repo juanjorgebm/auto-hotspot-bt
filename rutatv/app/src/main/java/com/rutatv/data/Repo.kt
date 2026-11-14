@@ -10,6 +10,7 @@ import java.util.concurrent.ConcurrentHashMap
 
 /** Punto único de acceso a datos: perfiles, catálogo (con caché en memoria), favoritos, recientes y progreso. */
 class Repo(context: Context) {
+    private val appContext = context.applicationContext
     val prefs = Prefs(context)
     val http = Http.client(context)
 
@@ -41,6 +42,7 @@ class Repo(context: Context) {
         _favorites.value = p?.let { prefs.favorites(it.id) } ?: emptyList()
         _recents.value = p?.let { prefs.recents(it.id) } ?: emptyList()
         if (changedAccount) clearCache()
+        com.rutatv.widget.Widgets.refresh(appContext)
     }
 
     fun lastProfile(): Profile? = _profiles.value.firstOrNull { it.id == prefs.activeProfileId }
@@ -107,6 +109,7 @@ class Repo(context: Context) {
         if (pid.isEmpty()) return
         prefs.setFavorites(pid, list)
         _favorites.value = list
+        com.rutatv.widget.Widgets.refresh(appContext)
     }
 
     /**
@@ -136,6 +139,7 @@ class Repo(context: Context) {
         val result = merged.values.toList()
         prefs.setFavorites(profile.id, result)
         if (profile.id == pid) _favorites.value = result
+        com.rutatv.widget.Widgets.refresh(appContext)
         fixed.size
     }
 
@@ -147,6 +151,7 @@ class Repo(context: Context) {
         val trimmed = list.take(40)
         prefs.setRecents(pid, trimmed)
         _recents.value = trimmed
+        com.rutatv.widget.Widgets.refresh(appContext)
     }
 
     fun position(item: Item) = prefs.position(pid, item.key)
