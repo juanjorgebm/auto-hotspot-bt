@@ -282,8 +282,28 @@ class MusicViewModel(app: Application) : AndroidViewModel(app), PlayerEngine.Lis
         }
     }
 
+    /** En modo video los controles se esconden solos cuando no se toca la pantalla (como en YouTube). */
+    var controlsVisible by mutableStateOf(true)
+        private set
+    private var hideJob: Job? = null
+
+    fun userInteracted() {
+        controlsVisible = true
+        scheduleHide()
+    }
+
+    private fun scheduleHide() {
+        hideJob?.cancel()
+        if (!videoMode) return
+        hideJob = viewModelScope.launch {
+            delay(4000)
+            if (videoMode && isPlaying) controlsVisible = false
+        }
+    }
+
     fun toggleVideoMode() {
         videoMode = !videoMode
+        userInteracted()
         val t = current ?: return
         if (videoMode && isArtOnly(t) && playingVideoId == t.videoId) {
             val pos = position
@@ -370,6 +390,9 @@ class MusicViewModel(app: Application) : AndroidViewModel(app), PlayerEngine.Lis
             playerMessage = null
         }
         if (state == PlayerEngine.ENDED) next()
+        // En pausa los controles vuelven a aparecer; al reanudar se esconden otra vez.
+        if (state == PlayerEngine.PAUSED) { hideJob?.cancel(); controlsVisible = true }
+        if (state == PlayerEngine.PLAYING && videoMode && controlsVisible && hideJob?.isActive != true) scheduleHide()
     }
 
     override fun onError(code: Int) {

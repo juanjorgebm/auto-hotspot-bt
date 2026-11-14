@@ -4,6 +4,8 @@ import android.os.Bundle
 import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
+import android.view.MotionEvent
+import android.view.View
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -37,6 +39,10 @@ class MainActivity : ComponentActivity() {
         }
         vm.player = player
         setupMediaSession()
+        // Video a pantalla completa: también se intenta esconder la barra del sistema.
+        lifecycleScope.launch {
+            snapshotFlow { vm.videoMode && !vm.controlsVisible }.collect { setImmersive(it) }
+        }
 
         setContent {
             MusicTheme {
@@ -53,7 +59,21 @@ class MainActivity : ComponentActivity() {
             override fun onPause() { if (vm.isPlaying) vm.playPause() }
             override fun onSkipToNext() = vm.next()
             override fun onSkipToPrevious() = vm.previous()
-            override fun onStop() { vm.pause() }
+            /** Cualquier toque en la pantalla vuelve a mostrar los controles del modo video. */
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        if (ev.actionMasked == MotionEvent.ACTION_DOWN) vm.userInteracted()
+        return super.dispatchTouchEvent(ev)
+    }
+
+    @Suppress("DEPRECATION")
+    private fun setImmersive(on: Boolean) {
+        window.decorView.systemUiVisibility = if (on) {
+            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or View.SYSTEM_UI_FLAG_FULLSCREEN or
+                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+        } else View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+    }
+
+    override fun onStop() { vm.pause() }
         })
         @Suppress("DEPRECATION")
         s.setFlags(MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS or MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS)

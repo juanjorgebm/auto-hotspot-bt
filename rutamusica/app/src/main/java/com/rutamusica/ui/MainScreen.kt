@@ -2,6 +2,7 @@ package com.rutamusica.ui
 
 import android.view.ViewGroup
 import android.view.View
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -77,7 +79,8 @@ fun App(vm: MusicViewModel, playerView: View) {
 @Composable
 fun MainScreen(vm: MusicViewModel, playerView: View) {
     var showSettings by remember { mutableStateOf(false) }
-    Row(Modifier.fillMaxSize().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+    val full = vm.videoMode && !vm.controlsVisible
+    Row(Modifier.fillMaxSize().padding(if (full) 0.dp else 12.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
         // El reproductor siempre en el mismo lugar del árbol: así no se reinicia al cambiar de modo.
         PlayerPane(vm, playerView, Modifier.weight(if (vm.videoMode) 1f else 0.42f).fillMaxHeight())
         if (!vm.videoMode) {
@@ -155,7 +158,7 @@ private fun PlayerPane(vm: MusicViewModel, playerView: View, modifier: Modifier)
                 }
             }
         }
-        Spacer(Modifier.height(6.dp))
+        if (!video || vm.controlsVisible) Spacer(Modifier.height(6.dp))
         if (track != null && !video) {
             val g = remember(track) { vm.guessFor(track) }
             Text(
@@ -165,44 +168,77 @@ private fun PlayerPane(vm: MusicViewModel, playerView: View, modifier: Modifier)
             Text(g.artist.ifBlank { track.channel }, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 style = MaterialTheme.typography.bodySmall)
         }
-        vm.playerMessage?.let {
-            Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, maxLines = 2)
-        }
-        SeekBar(vm)
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            // Botón para pasar a video en pantalla grande o volver a la letra.
-            Row(
-                Modifier.clip(RoundedCornerShape(28.dp)).background(if (video) Accent else PanelHi)
-                    .clickable { vm.toggleVideoMode() }.padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(if (video) Icons.Filled.Mic else Icons.Filled.Fullscreen, null, tint = Color.White, modifier = Modifier.size(28.dp))
-                Spacer(Modifier.width(6.dp))
-                Text(if (video) "Letra" else "Video", style = MaterialTheme.typography.labelLarge, color = Color.White)
+        AnimatedVisibility(visible = !video || vm.controlsVisible) {
+            Column {
+                vm.playerMessage?.let {
+                    Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, maxLines = 2)
+                }
+                SeekBar(vm)
+                if (video) VideoControls(vm, track) else KaraokeControls(vm)
             }
-            if (video && track != null) {
+        }
+    }
+}
+
+@Composable
+private fun ModeButton(vm: MusicViewModel) {
+    val video = vm.videoMode
+    Row(
+        Modifier.clip(RoundedCornerShape(28.dp)).background(if (video) Accent else PanelHi)
+            .clickable { vm.toggleVideoMode() }.padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(if (video) Icons.Filled.Mic else Icons.Filled.Fullscreen, null, tint = Color.White, modifier = Modifier.size(28.dp))
+        Spacer(Modifier.width(6.dp))
+        Text(if (video) "Letra" else "Video", style = MaterialTheme.typography.labelLarge, color = Color.White)
+    }
+}
+
+@Composable
+private fun TransportButtons(vm: MusicViewModel, big: Boolean) {
+    Row(horizontalArrangement = Arrangement.spacedBy(if (big) 18.dp else 10.dp), verticalAlignment = Alignment.CenterVertically) {
+        CircleButton(Icons.Filled.Shuffle, "Aleatorio", if (big) 60 else 48, if (vm.shuffle) Accent else Muted, PanelHi.copy(alpha = 0f)) { vm.toggleShuffle() }
+        CircleButton(Icons.Filled.SkipPrevious, "Anterior", if (big) 72 else 64) { vm.previous() }
+        CircleButton(
+            if (vm.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+            "Reproducir o pausar", if (big) 84 else 72, Color.White, Accent,
+        ) { vm.playPause() }
+        CircleButton(Icons.Filled.SkipNext, "Siguiente", if (big) 72 else 64) { vm.next() }
+        Spacer(Modifier.size(if (big) 60.dp else 0.dp))   // equilibra el botón de aleatorio para que quede centrado
+    }
+}
+
+@Composable
+private fun KaraokeControls(vm: MusicViewModel) {
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        ModeButton(vm)
+        Spacer(Modifier.weight(1f))
+        TransportButtons(vm, big = false)
+        Spacer(Modifier.weight(1f))
+    }
+}
+
+/** Modo video: botones grandes al centro de la pantalla y el título a la izquierda. */
+@Composable
+private fun VideoControls(vm: MusicViewModel, track: Track?) {
+    Box(Modifier.fillMaxWidth()) {
+        Row(Modifier.align(Alignment.CenterStart), verticalAlignment = Alignment.CenterVertically) {
+            ModeButton(vm)
+            if (track != null) {
                 val g = remember(track) { vm.guessFor(track) }
-                Column(Modifier.weight(1f)) {
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.widthIn(max = 260.dp)) {
                     Text(g.title.ifBlank { track.title }, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(g.artist.ifBlank { track.channel }, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.bodySmall)
                 }
-            } else {
-                Spacer(Modifier.weight(1f))
             }
-            CircleButton(Icons.Filled.Shuffle, "Aleatorio", if (video) 56 else 48, if (vm.shuffle) Accent else Muted, PanelHi.copy(alpha = 0f)) { vm.toggleShuffle() }
-            CircleButton(Icons.Filled.SkipPrevious, "Anterior", 64) { vm.previous() }
-            CircleButton(
-                if (vm.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                "Reproducir o pausar", 72, Color.White, Accent,
-            ) { vm.playPause() }
-            CircleButton(Icons.Filled.SkipNext, "Siguiente", 64) { vm.next() }
-            if (!video) Spacer(Modifier.weight(1f))
         }
+        Box(Modifier.align(Alignment.Center)) { TransportButtons(vm, big = true) }
     }
 }
 
@@ -212,7 +248,9 @@ private fun SeekBar(vm: MusicViewModel) {
     var dragValue by remember { mutableFloatStateOf(0f) }
     val dur = vm.duration
     val pos = if (dragging) dragValue.toDouble() else vm.position
-    Column {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(fmtTime(pos), color = Muted, style = MaterialTheme.typography.bodySmall)
+        Spacer(Modifier.width(10.dp))
         Slider(
             value = if (dur > 0) pos.toFloat().coerceIn(0f, dur.toFloat()) else 0f,
             onValueChange = { dragging = true; dragValue = it },
@@ -220,12 +258,10 @@ private fun SeekBar(vm: MusicViewModel) {
             valueRange = 0f..(if (dur > 0) dur.toFloat() else 1f),
             enabled = dur > 0,
             colors = SliderDefaults.colors(thumbColor = Accent, activeTrackColor = Accent),
+            modifier = Modifier.weight(1f),
         )
-        Row(Modifier.fillMaxWidth()) {
-            Text(fmtTime(pos), color = Muted, style = MaterialTheme.typography.bodySmall)
-            Spacer(Modifier.weight(1f))
-            Text(fmtTime(dur), color = Muted, style = MaterialTheme.typography.bodySmall)
-        }
+        Spacer(Modifier.width(10.dp))
+        Text(fmtTime(dur), color = Muted, style = MaterialTheme.typography.bodySmall)
     }
 }
 
