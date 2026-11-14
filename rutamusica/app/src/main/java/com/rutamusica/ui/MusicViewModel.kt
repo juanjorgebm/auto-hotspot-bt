@@ -316,6 +316,16 @@ class MusicViewModel(app: Application) : AndroidViewModel(app), PlayerEngine.Lis
         }
     }
 
+    // ---------- Modo YouTube (la página de YouTube tal cual) ----------
+    var youTubeMode by mutableStateOf(prefs.youTubeMode)
+        private set
+
+    fun setYouTubeMode(on: Boolean) {
+        if (on) pause()
+        youTubeMode = on
+        prefs.youTubeMode = on
+    }
+
     // ---------- Búsqueda ----------
     var searchQuery by mutableStateOf("")
     var searchResults by mutableStateOf<List<Track>>(emptyList())

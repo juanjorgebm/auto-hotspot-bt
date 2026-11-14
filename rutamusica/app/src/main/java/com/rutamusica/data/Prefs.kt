@@ -40,6 +40,10 @@ class Prefs(context: Context) {
         get() = sp.getBoolean("music_only", true)
         set(v) = sp.edit().putBoolean("music_only", v).apply()
 
+    var youTubeMode: Boolean
+        get() = sp.getBoolean("yt_mode", false)
+        set(v) = sp.edit().putBoolean("yt_mode", v).apply()
+
     var shuffle: Boolean
         get() = sp.getBoolean("shuffle", false)
         set(v) = sp.edit().putBoolean("shuffle", v).apply()

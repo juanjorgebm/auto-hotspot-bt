@@ -31,6 +31,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.SmartDisplay
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MusicNote
@@ -66,13 +67,14 @@ import androidx.compose.ui.viewinterop.AndroidView
 import coil.compose.AsyncImage
 import com.rutamusica.data.Playlist
 import com.rutamusica.data.Track
+import com.rutamusica.player.YouTubeBrowser
 
 @Composable
-fun App(vm: MusicViewModel, playerView: View) {
+fun App(vm: MusicViewModel, playerView: View, browser: () -> YouTubeBrowser) {
     when (vm.stage) {
         Stage.Key -> KeyScreen(vm)
         Stage.Login -> LoginScreen(vm)
-        Stage.Ready -> MainScreen(vm, playerView)
+        Stage.Ready -> if (vm.youTubeMode) YouTubeScreen(vm, remember { browser() }) else MainScreen(vm, playerView)
     }
 }
 
@@ -91,6 +93,17 @@ fun MainScreen(vm: MusicViewModel, playerView: View) {
                     TabButton("Mis listas", Icons.Filled.LibraryMusic, vm.tab == Tab.Library) { vm.tab = Tab.Library }
                     Spacer(Modifier.width(8.dp))
                     TabButton("Buscar", Icons.Filled.Search, vm.tab == Tab.Search) { vm.tab = Tab.Search }
+                    Spacer(Modifier.width(8.dp))
+                    // Cambiar al modo YouTube (la página de YouTube como en el celular)
+                    Row(
+                        Modifier.clip(RoundedCornerShape(28.dp)).background(Color(0xFFE53935))
+                            .clickable { vm.setYouTubeMode(true) }.padding(horizontal = 18.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Icons.Filled.SmartDisplay, null, tint = Color.White, modifier = Modifier.size(26.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("YouTube", style = MaterialTheme.typography.labelLarge, color = Color.White)
+                    }
                     Spacer(Modifier.weight(1f))
                     IconButton(onClick = { showSettings = true }, modifier = Modifier.size(56.dp)) {
                         Icon(Icons.Filled.Settings, "Ajustes", tint = Muted, modifier = Modifier.size(32.dp))

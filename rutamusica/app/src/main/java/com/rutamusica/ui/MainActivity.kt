@@ -19,12 +19,17 @@ import android.webkit.WebSettings
 import com.rutamusica.player.GeckoPlayer
 import com.rutamusica.player.PlayerEngine
 import com.rutamusica.player.YtPlayer
+import com.rutamusica.player.YouTubeBrowser
+import androidx.activity.OnBackPressedCallback
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private val vm: MusicViewModel by viewModels()
     private lateinit var player: PlayerEngine
     private var session: MediaSessionCompat? = null
+    private var browserOrNull: YouTubeBrowser? = null
+    private val browser: YouTubeBrowser
+        get() = browserOrNull ?: YouTubeBrowser(this).also { browserOrNull = it }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -39,14 +44,31 @@ class MainActivity : ComponentActivity() {
         }
         vm.player = player
         setupMediaSession()
+        // Al volver al modo Música se pausa lo que suene en YouTube.
+        lifecycleScope.launch {
+            snapshotFlow { vm.youTubeMode }.collect { if (!it) browserOrNull?.pause() }
+        }
+        // Botón "atrás" del carro: en YouTube va a la página anterior; en modo video vuelve a la letra.
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                val b = browserOrNull
+                when {
+                    vm.youTubeMode && b != null && b.fullscreen -> b.exitFullscreen()
+                    vm.youTubeMode && b != null && b.canGoBack -> b.back()
+                    vm.youTubeMode -> vm.setYouTubeMode(false)
+                    vm.videoMode -> vm.toggleVideoMode()
+                    else -> moveTaskToBack(true)
+                }
+            }
+        })
         // Video a pantalla completa: también se intenta esconder la barra del sistema.
         lifecycleScope.launch {
-            snapshotFlow { vm.videoMode && !vm.controlsVisible }.collect { setImmersive(it) }
+            snapshotFlow { (vm.videoMode && !vm.controlsVisible) || (vm.youTubeMode && browserOrNull?.fullscreen == true) }.collect { applyImmersive(it) }
         }
 
         setContent {
             MusicTheme {
-                Surface(Modifier.fillMaxSize(), color = Bg) { App(vm, player.view) }
+                Surface(Modifier.fillMaxSize(), color = Bg) { App(vm, player.view) { browser } }
             }
         }
     }
@@ -109,7 +131,7 @@ class MainActivity : ComponentActivity() {
     }
 
     @Suppress("DEPRECATION")
-    private fun setImmersive(on: Boolean) {
+    private fun applyImmersive(on: Boolean) {
         window.decorView.systemUiVisibility = if (on) {
             View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or View.SYSTEM_UI_FLAG_FULLSCREEN or
                 View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
@@ -120,6 +142,7 @@ class MainActivity : ComponentActivity() {
         super.onStop()
         // Regla de YouTube: el reproductor no puede sonar escondido, así que se pausa al salir de la app.
         vm.pause()
+        browserOrNull?.pause()
     }
 
     override fun onDestroy() {
@@ -127,6 +150,7 @@ class MainActivity : ComponentActivity() {
         session = null
         if (vm.player === player) vm.player = null
         player.destroy()
+        browserOrNull?.destroy()
         super.onDestroy()
     }
 }
