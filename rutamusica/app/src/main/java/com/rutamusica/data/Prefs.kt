@@ -32,6 +32,14 @@ class Prefs(context: Context) {
     fun lyricsQuery(videoId: String): String = s("lq_$videoId")
     fun setLyricsQuery(videoId: String, q: String) = put("lq_$videoId", q)
 
+    /** Video musical encontrado para una canción que en YouTube solo tiene la portada ("" = no hay). */
+    fun musicVideo(videoId: String): String? = sp.getString("mv_$videoId", null)
+    fun setMusicVideo(videoId: String, mv: String) = put("mv_$videoId", mv)
+
+    var musicOnly: Boolean
+        get() = sp.getBoolean("music_only", true)
+        set(v) = sp.edit().putBoolean("music_only", v).apply()
+
     var shuffle: Boolean
         get() = sp.getBoolean("shuffle", false)
         set(v) = sp.edit().putBoolean("shuffle", v).apply()

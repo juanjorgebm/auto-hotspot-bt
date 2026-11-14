@@ -27,6 +27,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MusicNote
@@ -76,24 +78,30 @@ fun App(vm: MusicViewModel, playerView: View) {
 fun MainScreen(vm: MusicViewModel, playerView: View) {
     var showSettings by remember { mutableStateOf(false) }
     Row(Modifier.fillMaxSize().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-        PlayerPane(vm, playerView, Modifier.weight(0.42f).fillMaxHeight())
-        Column(Modifier.weight(0.58f).fillMaxHeight()) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                TabButton("Letra", Icons.Filled.Mic, vm.tab == Tab.Lyrics) { vm.tab = Tab.Lyrics }
-                Spacer(Modifier.width(8.dp))
-                TabButton("Mis listas", Icons.Filled.LibraryMusic, vm.tab == Tab.Library) { vm.tab = Tab.Library }
-                Spacer(Modifier.weight(1f))
-                IconButton(onClick = { showSettings = true }, modifier = Modifier.size(56.dp)) {
-                    Icon(Icons.Filled.Settings, "Ajustes", tint = Muted, modifier = Modifier.size(32.dp))
+        // El reproductor siempre en el mismo lugar del árbol: así no se reinicia al cambiar de modo.
+        PlayerPane(vm, playerView, Modifier.weight(if (vm.videoMode) 1f else 0.42f).fillMaxHeight())
+        if (!vm.videoMode) {
+            Column(Modifier.weight(0.58f).fillMaxHeight()) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    TabButton("Letra", Icons.Filled.Mic, vm.tab == Tab.Lyrics) { vm.tab = Tab.Lyrics }
+                    Spacer(Modifier.width(8.dp))
+                    TabButton("Mis listas", Icons.Filled.LibraryMusic, vm.tab == Tab.Library) { vm.tab = Tab.Library }
+                    Spacer(Modifier.width(8.dp))
+                    TabButton("Buscar", Icons.Filled.Search, vm.tab == Tab.Search) { vm.tab = Tab.Search }
+                    Spacer(Modifier.weight(1f))
+                    IconButton(onClick = { showSettings = true }, modifier = Modifier.size(56.dp)) {
+                        Icon(Icons.Filled.Settings, "Ajustes", tint = Muted, modifier = Modifier.size(32.dp))
+                    }
                 }
-            }
-            Spacer(Modifier.height(8.dp))
-            Box(
-                Modifier.fillMaxSize().clip(RoundedCornerShape(18.dp)).background(Panel)
-            ) {
-                when (vm.tab) {
-                    Tab.Lyrics -> LyricsPane(vm)
-                    Tab.Library -> LibraryPane(vm)
+                Spacer(Modifier.height(8.dp))
+                Box(
+                    Modifier.fillMaxSize().clip(RoundedCornerShape(18.dp)).background(Panel)
+                ) {
+                    when (vm.tab) {
+                        Tab.Lyrics -> LyricsPane(vm)
+                        Tab.Library -> LibraryPane(vm)
+                        Tab.Search -> SearchPane(vm)
+                    }
                 }
             }
         }
@@ -122,55 +130,78 @@ private fun TabButton(text: String, icon: ImageVector, selected: Boolean, onClic
 @Composable
 private fun PlayerPane(vm: MusicViewModel, playerView: View, modifier: Modifier) {
     val track = vm.current
+    val video = vm.videoMode
     Column(modifier) {
-        // El video de YouTube siempre visible (regla de YouTube: no se puede esconder ni tapar).
-        Box(
-            Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(14.dp)).background(Color.Black)
-        ) {
-            AndroidView(
-                factory = {
-                    (playerView.parent as? ViewGroup)?.removeView(playerView)
-                    playerView
-                },
-                modifier = Modifier.fillMaxSize(),
-            )
-            if (track == null) {
-                Box(Modifier.fillMaxSize().background(Panel), contentAlignment = Alignment.Center) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(Icons.Filled.MusicNote, null, tint = Accent, modifier = Modifier.size(56.dp))
-                        Text("Elige una canción en \"Mis listas\"", color = Muted, textAlign = TextAlign.Center)
+        // El video ocupa todo el espacio que sobra; los botones siempre quedan visibles abajo.
+        Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+            // El video de YouTube siempre visible (regla de YouTube: no se puede esconder ni tapar).
+            Box(
+                Modifier.aspectRatio(16f / 9f).clip(RoundedCornerShape(14.dp)).background(Color.Black)
+            ) {
+                AndroidView(
+                    factory = {
+                        (playerView.parent as? ViewGroup)?.removeView(playerView)
+                        playerView
+                    },
+                    modifier = Modifier.fillMaxSize(),
+                )
+                if (track == null) {
+                    Box(Modifier.fillMaxSize().background(Panel), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(Icons.Filled.MusicNote, null, tint = Accent, modifier = Modifier.size(56.dp))
+                            Text("Elige una canción en \"Mis listas\" o en \"Buscar\"", color = Muted, textAlign = TextAlign.Center)
+                        }
                     }
                 }
             }
         }
-        Spacer(Modifier.height(10.dp))
-        if (track != null) {
+        Spacer(Modifier.height(6.dp))
+        if (track != null && !video) {
             val g = remember(track) { vm.guessFor(track) }
             Text(
-                g.title.ifBlank { track.title }, style = MaterialTheme.typography.titleLarge,
-                maxLines = 2, overflow = TextOverflow.Ellipsis,
+                g.title.ifBlank { track.title }, style = MaterialTheme.typography.titleMedium,
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
-            Text(g.artist.ifBlank { track.channel }, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(g.artist.ifBlank { track.channel }, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.bodySmall)
         }
         vm.playerMessage?.let {
-            Spacer(Modifier.height(4.dp))
-            Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, maxLines = 3)
+            Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, maxLines = 2)
         }
-        Spacer(Modifier.weight(1f))
         SeekBar(vm)
         Row(
             Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            CircleButton(Icons.Filled.Shuffle, "Aleatorio", 60, if (vm.shuffle) Accent else Muted, PanelHi.copy(alpha = 0f)) { vm.toggleShuffle() }
-            CircleButton(Icons.Filled.SkipPrevious, "Anterior", 68) { vm.previous() }
+            // Botón para pasar a video en pantalla grande o volver a la letra.
+            Row(
+                Modifier.clip(RoundedCornerShape(28.dp)).background(if (video) Accent else PanelHi)
+                    .clickable { vm.toggleVideoMode() }.padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(if (video) Icons.Filled.Mic else Icons.Filled.Fullscreen, null, tint = Color.White, modifier = Modifier.size(28.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(if (video) "Letra" else "Video", style = MaterialTheme.typography.labelLarge, color = Color.White)
+            }
+            if (video && track != null) {
+                val g = remember(track) { vm.guessFor(track) }
+                Column(Modifier.weight(1f)) {
+                    Text(g.title.ifBlank { track.title }, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(g.artist.ifBlank { track.channel }, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.bodySmall)
+                }
+            } else {
+                Spacer(Modifier.weight(1f))
+            }
+            CircleButton(Icons.Filled.Shuffle, "Aleatorio", if (video) 56 else 48, if (vm.shuffle) Accent else Muted, PanelHi.copy(alpha = 0f)) { vm.toggleShuffle() }
+            CircleButton(Icons.Filled.SkipPrevious, "Anterior", 64) { vm.previous() }
             CircleButton(
                 if (vm.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                "Reproducir o pausar", 84, Color.White, Accent,
+                "Reproducir o pausar", 72, Color.White, Accent,
             ) { vm.playPause() }
-            CircleButton(Icons.Filled.SkipNext, "Siguiente", 68) { vm.next() }
-            Spacer(Modifier.size(60.dp))
+            CircleButton(Icons.Filled.SkipNext, "Siguiente", 64) { vm.next() }
+            if (!video) Spacer(Modifier.weight(1f))
         }
     }
 }
@@ -293,7 +324,7 @@ private fun PlaylistCard(p: Playlist, onClick: () -> Unit) {
 }
 
 @Composable
-private fun TrackRow(t: Track, playing: Boolean, onClick: () -> Unit) {
+internal fun TrackRow(t: Track, playing: Boolean, onClick: () -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()

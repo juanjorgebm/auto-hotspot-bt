@@ -117,6 +117,34 @@ class YouTubeApi(context: Context, private val auth: GoogleAuth) {
         return out
     }
 
+    /**
+     * Búsqueda en YouTube. Ojo: cada búsqueda gasta 100 del cupo gratis de 10 000 por día.
+     * [musicOnly] limita a la categoría Música. Solo videos que se pueden insertar en otras apps.
+     */
+    suspend fun search(query: String, musicOnly: Boolean, max: Int = 25): List<Track> {
+        val p = mutableMapOf(
+            "part" to "snippet", "q" to query, "type" to "video", "maxResults" to max.toString(),
+            "videoEmbeddable" to "true", "safeSearch" to "none",
+        )
+        if (musicOnly) p["videoCategoryId"] = "10"
+        val o = get("search", p)
+        val items = o.optJSONArray("items")
+        val out = mutableListOf<Track>()
+        for (i in 0 until (items?.length() ?: 0)) {
+            val it = items!!.getJSONObject(i)
+            val vid = it.optJSONObject("id")?.optString("videoId").orEmpty()
+            val sn = it.optJSONObject("snippet") ?: continue
+            if (vid.isBlank()) continue
+            out += Track(
+                videoId = vid,
+                title = android.text.Html.fromHtml(sn.optString("title")).toString(),
+                channel = android.text.Html.fromHtml(sn.optString("channelTitle")).toString(),
+                thumb = thumb(sn),
+            )
+        }
+        return out
+    }
+
     private fun thumb(sn: JSONObject): String? {
         val t = sn.optJSONObject("thumbnails") ?: return null
         for (k in listOf("medium", "high", "default")) {

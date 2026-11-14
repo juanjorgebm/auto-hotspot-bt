@@ -23,7 +23,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 enum class Stage { Key, Login, Ready }
-enum class Tab { Lyrics, Library }
+enum class Tab { Lyrics, Library, Search }
 
 sealed class LyricsState {
     object Idle : LyricsState()
@@ -233,6 +233,8 @@ class MusicViewModel(app: Application) : AndroidViewModel(app), PlayerEngine.Lis
         index = queue.indexOf(cur).coerceAtLeast(0)
     }
 
+    private var loadJob: Job? = null
+
     private fun loadCurrent() {
         val t = current ?: return
         skipJob?.cancel()
@@ -240,8 +242,93 @@ class MusicViewModel(app: Application) : AndroidViewModel(app), PlayerEngine.Lis
         position = 0.0
         duration = 0.0
         offsetMs = prefs.lyricsOffset(t.videoId)
-        player?.load(t.videoId)
+        loadJob?.cancel()
+        if (videoMode && isArtOnly(t)) {
+            loadJob = viewModelScope.launch { playVideoId(musicVideoFor(t) ?: t.videoId, 0.0) }
+        } else {
+            playVideoId(t.videoId, 0.0)
+        }
         fetchLyrics(t)
+    }
+
+    /** Id del video que de verdad está sonando (puede ser el video musical en vez de la canción con portada). */
+    var playingVideoId by mutableStateOf<String?>(null)
+        private set
+
+    private fun playVideoId(id: String, start: Double) {
+        playingVideoId = id
+        player?.load(id, start)
+    }
+
+    // ---------- Modo video ----------
+    var videoMode by mutableStateOf(false)
+        private set
+
+    /** Canciones de YouTube Music que solo muestran la portada del disco (canal "Artista - Topic"). */
+    private fun isArtOnly(t: Track) = t.channel.trim().endsWith("- Topic", ignoreCase = true)
+
+    private suspend fun musicVideoFor(t: Track): String? {
+        prefs.musicVideo(t.videoId)?.let { return it.ifBlank { null } }
+        val g = guessFor(t)
+        return try {
+            val found = yt.search("${g.artist} ${g.title} video oficial", musicOnly = true, max = 5)
+                .firstOrNull { !it.channel.trim().endsWith("- Topic", ignoreCase = true) }
+            prefs.setMusicVideo(t.videoId, found?.videoId.orEmpty())
+            found?.videoId
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            null   // sin cupo o sin internet: se queda con la portada
+        }
+    }
+
+    fun toggleVideoMode() {
+        videoMode = !videoMode
+        val t = current ?: return
+        if (videoMode && isArtOnly(t) && playingVideoId == t.videoId) {
+            val pos = position
+            loadJob?.cancel()
+            loadJob = viewModelScope.launch {
+                val mv = musicVideoFor(t)
+                if (mv != null && current == t) playVideoId(mv, pos)
+                else if (mv == null) playerMessage = "No encontré el video musical de esta canción; sigue la portada."
+            }
+        }
+    }
+
+    // ---------- Búsqueda ----------
+    var searchQuery by mutableStateOf("")
+    var searchResults by mutableStateOf<List<Track>>(emptyList())
+        private set
+    var searchLoading by mutableStateOf(false)
+        private set
+    var searchError by mutableStateOf<String?>(null)
+        private set
+    var musicOnly by mutableStateOf(prefs.musicOnly)
+        private set
+
+    fun setMusicOnlyFilter(v: Boolean) {
+        musicOnly = v
+        prefs.musicOnly = v
+    }
+
+    fun search() {
+        val q = searchQuery.trim()
+        if (q.isEmpty()) return
+        searchLoading = true
+        searchError = null
+        viewModelScope.launch {
+            try {
+                searchResults = yt.search(q, musicOnly)
+                if (searchResults.isEmpty()) searchError = "No encontré nada con \"$q\"."
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                searchError = e.message ?: "No se pudo buscar. Revisa el internet."
+            } finally {
+                searchLoading = false
+            }
+        }
     }
 
     fun next() {
