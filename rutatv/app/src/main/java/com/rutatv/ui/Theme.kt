@@ -6,7 +6,10 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import com.rutatv.R
 import androidx.compose.ui.unit.sp
 
 val Orange = Color(0xFFFF8A3D)
@@ -28,16 +31,33 @@ private val colors = darkColorScheme(
     error = Color(0xFFFF6B6B),
 )
 
+// Fuente incluida en la app: la fuente del sistema de algunas pantallas de carro no trae
+// tildes ni ñ en negrita/seminegrita (salían cuadros, p. ej. "conexi□n").
+val AppFont = FontFamily(
+    Font(R.font.app_regular, FontWeight.Normal),
+    Font(R.font.app_bold, FontWeight.Bold),
+)
+
+private fun TextStyle.f() = copy(fontFamily = AppFont)
+private val base = Typography()
+
 // Letra más grande de lo normal: se usa en la pantalla del carro, a distancia.
 private val type = Typography(
-    headlineMedium = TextStyle(fontSize = 30.sp, fontWeight = FontWeight.Bold),
-    titleLarge = TextStyle(fontSize = 24.sp, fontWeight = FontWeight.SemiBold),
-    titleMedium = TextStyle(fontSize = 21.sp, fontWeight = FontWeight.SemiBold),
-    bodyLarge = TextStyle(fontSize = 20.sp),
-    bodyMedium = TextStyle(fontSize = 18.sp),
-    bodySmall = TextStyle(fontSize = 15.sp),
-    labelLarge = TextStyle(fontSize = 19.sp, fontWeight = FontWeight.SemiBold),
-    labelMedium = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.Medium),
+    displayLarge = base.displayLarge.f(),
+    displayMedium = base.displayMedium.f(),
+    displaySmall = base.displaySmall.f(),
+    headlineLarge = base.headlineLarge.f(),
+    headlineMedium = TextStyle(fontSize = 30.sp, fontWeight = FontWeight.Bold).f(),
+    headlineSmall = base.headlineSmall.f(),
+    titleLarge = TextStyle(fontSize = 24.sp, fontWeight = FontWeight.Bold).f(),
+    titleMedium = TextStyle(fontSize = 21.sp, fontWeight = FontWeight.Bold).f(),
+    titleSmall = base.titleSmall.f(),
+    bodyLarge = TextStyle(fontSize = 20.sp).f(),
+    bodyMedium = TextStyle(fontSize = 18.sp).f(),
+    bodySmall = TextStyle(fontSize = 15.sp).f(),
+    labelLarge = TextStyle(fontSize = 19.sp, fontWeight = FontWeight.Bold).f(),
+    labelMedium = TextStyle(fontSize = 16.sp).f(),
+    labelSmall = base.labelSmall.f(),
 )
 
 @Composable

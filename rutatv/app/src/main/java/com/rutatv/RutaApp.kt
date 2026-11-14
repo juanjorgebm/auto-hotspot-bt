@@ -13,7 +13,24 @@ class RutaApp : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        installCrashLogger()
         repo = Repo(this)
+    }
+
+    /** Si la app se cierra por un error, guarda el detalle para mostrarlo en Ajustes. */
+    private fun installCrashLogger() {
+        val previous = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { t, e ->
+            try {
+                val sw = java.io.StringWriter()
+                e.printStackTrace(java.io.PrintWriter(sw))
+                getSharedPreferences("rutatv", MODE_PRIVATE).edit()
+                    .putString("last_crash", "RutaTV ${BuildConfig.VERSION_NAME} · Android ${android.os.Build.VERSION.RELEASE} · ${android.os.Build.MODEL}\n" + sw.toString().take(6000))
+                    .commit()
+            } catch (_: Throwable) {
+            }
+            previous?.uncaughtException(t, e)
+        }
     }
 
     override fun newImageLoader(): ImageLoader = ImageLoader.Builder(this)

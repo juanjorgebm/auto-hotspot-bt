@@ -76,6 +76,10 @@ class Prefs(context: Context) {
     }
     fun newMoviesTime(server: String) = sp.getLong("newmovies_t_" + server.hashCode(), 0L)
 
+    var lastCrash: String
+        get() = sp.getString("last_crash", "") ?: ""
+        set(v) = sp.edit().putString("last_crash", v).apply()
+
     fun deleteProfileData(pid: String) {
         val e = sp.edit().remove("favorites_$pid").remove("recents_$pid")
         sp.all.keys.filter { it.startsWith("pos_${pid}_") }.forEach { e.remove(it) }

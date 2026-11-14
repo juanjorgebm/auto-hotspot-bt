@@ -414,6 +414,25 @@ private fun SettingsScreen(onSwitchProfile: () -> Unit, onSetup: () -> Unit) {
 
         UpdateCard()
 
+        var crash by remember { mutableStateOf(repo.prefs.lastCrash) }
+        if (crash.isNotEmpty()) {
+            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Panel).padding(16.dp)) {
+                Text("La app se cerró la última vez", style = MaterialTheme.typography.titleLarge)
+                Text("Copia el detalle y pégalo en el chat para corregirlo.", color = Muted, style = MaterialTheme.typography.bodyMedium)
+                Text(crash.lines().take(4).joinToString("\n"), color = Muted, style = MaterialTheme.typography.bodySmall)
+                Spacer(Modifier.height(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    BigButton("Copiar detalle del error") {
+                        clipboard.setText(androidx.compose.ui.text.AnnotatedString(crash))
+                        status = "Detalle del error copiado."
+                    }
+                    OutlinedButton(onClick = { repo.prefs.lastCrash = ""; crash = "" }, modifier = Modifier.heightIn(min = 64.dp)) {
+                        Text("Borrar", style = MaterialTheme.typography.labelLarge)
+                    }
+                }
+            }
+        }
+
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             BigButton("Cambiar de perfil", onClick = onSwitchProfile)
             BigButton("Probar conexión", enabled = !busy) {

@@ -122,13 +122,19 @@ class Repo(context: Context) {
         val catalogs = HashMap<Kind, List<Item>>()
         val fixed = items.map { fav ->
             try {
+                // Solo se descarga el catálogo completo de canales; películas/series solo si ya están en memoria
+                // (el de películas es enorme y en pantallas de carro con poca memoria puede cerrar la app).
                 val catalog = catalogs.getOrPut(fav.kind) {
-                    if (fav.kind == Kind.EPISODE) emptyList() else api.streams(fav.kind, null)
+                    when (fav.kind) {
+                        Kind.LIVE -> if (profile.id == pid) streams(Kind.LIVE, null) else api.streams(Kind.LIVE, null)
+                        Kind.EPISODE -> emptyList()
+                        else -> if (profile.id == pid) streamCache["${fav.kind.name}:*"] ?: emptyList() else emptyList()
+                    }
                 }
                 val match = catalog.firstOrNull { it.id == fav.id }
                     ?: catalog.firstOrNull { normalize(it.name) == normalize(fav.name) }
                 match?.copy(fromViva = true) ?: fav
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 fav
             }
         }

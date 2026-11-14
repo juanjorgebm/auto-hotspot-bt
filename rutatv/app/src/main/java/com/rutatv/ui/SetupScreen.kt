@@ -297,7 +297,7 @@ suspend fun refreshVivaFavorites(token: String, profile: Profile): Pair<String, 
         val favs = withContext(Dispatchers.IO) { viva.favorites(customerId, profile.vivaProfileId.ifBlank { null }) }
         val n = repo.importVivaFavorites(profile, favs)
         "$n favorito(s) actualizados desde VivaPlayer." to viva.lastRaw
-    } catch (e: Exception) {
+    } catch (e: Throwable) {
         "Error: ${friendlyError(e)}" to viva.lastRaw
     }
 }
