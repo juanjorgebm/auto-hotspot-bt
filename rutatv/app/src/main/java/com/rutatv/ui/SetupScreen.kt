@@ -91,6 +91,11 @@ private fun VivaImport(onDone: () -> Unit) {
     var showRaw by remember { mutableStateOf(false) }
     val log = remember { mutableStateListOf<String>() }
     val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
+    var result by remember { mutableStateOf<ImportResult?>(null) }
+    var vivaRef by remember { mutableStateOf<VivaApi?>(null) }
+    var xServer by rememberSaveable { mutableStateOf("") }
+    var xUser by rememberSaveable { mutableStateOf("") }
+    var xPass by rememberSaveable { mutableStateOf("") }
 
     Row(Modifier.fillMaxSize()) {
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
@@ -123,15 +128,19 @@ private fun VivaImport(onDone: () -> Unit) {
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 BigButton(if (busy) "Importando…" else "Importar perfiles", enabled = !busy && token.isNotBlank() && username.isNotBlank()) {
-                    busy = true; finished = false; log.clear(); raw = ""
+                    busy = true; finished = false; log.clear(); raw = ""; result = null
+                    val viva = VivaApi(token, repo.http)
+                    vivaRef = viva
                     scope.launch {
-                        val viva = VivaApi(token, repo.http)
                         try {
-                            val n = withContext(Dispatchers.IO) { importFromViva(viva, username) { line -> scope.launch { log.add(line) } } }
+                            val r = withContext(Dispatchers.IO) { importFromViva(viva, username) { line -> scope.launch { log.add(line) } } }
                             repo.prefs.vivaUsername = username
                             repo.prefs.vivaToken = if (rememberToken) token else ""
-                            log.add("Listo: $n perfil(es) importado(s).")
-                            finished = n > 0
+                            result = r
+                            if (r.pending.isNotEmpty()) {
+                                xServer = r.server; xUser = r.username
+                            } else log.add("Listo: ${r.saved} perfil(es) importado(s).")
+                            finished = r.saved > 0
                         } catch (e: Exception) {
                             log.add("Error: ${friendlyError(e)}")
                         } finally {
@@ -141,6 +150,47 @@ private fun VivaImport(onDone: () -> Unit) {
                     }
                 }
                 if (finished) BigButton("Elegir perfil", onClick = onDone)
+            }
+            val r = result
+            val viva = vivaRef
+            if (r != null && viva != null && r.pending.isNotEmpty()) {
+                Spacer(Modifier.height(16.dp))
+                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Panel).padding(16.dp)) {
+                    Text("Contraseña de la cuenta Xtream", style = MaterialTheme.typography.titleLarge)
+                    Text(
+                        "VivaPlayer no entrega la contraseña por la API. Escríbela una vez (es la de tu línea IPTV); " +
+                            "se usará para: ${r.pending.joinToString(", ") { it.label }}. Se guarda solo en este aparato.",
+                        color = Muted, style = MaterialTheme.typography.bodyMedium,
+                    )
+                    OutlinedTextField(xServer, { xServer = it.trim() }, label = { Text("Servidor") }, singleLine = true,
+                        modifier = Modifier.fillMaxWidth(), textStyle = MaterialTheme.typography.bodyLarge)
+                    OutlinedTextField(xUser, { xUser = it.trim() }, label = { Text("Usuario Xtream") }, singleLine = true,
+                        modifier = Modifier.fillMaxWidth(), textStyle = MaterialTheme.typography.bodyLarge)
+                    OutlinedTextField(xPass, { xPass = it.trim() }, label = { Text("Contraseña Xtream") }, singleLine = true,
+                        modifier = Modifier.fillMaxWidth(), textStyle = MaterialTheme.typography.bodyLarge)
+                    Spacer(Modifier.height(10.dp))
+                    BigButton(if (busy) "Probando…" else "Guardar perfiles", enabled = !busy && xServer.isNotBlank() && xUser.isNotBlank() && xPass.isNotBlank()) {
+                        busy = true
+                        scope.launch {
+                            val acc = XtreamAccount(XtreamApi.normalizeServer(xServer), xUser, xPass)
+                            try {
+                                val info = withContext(Dispatchers.IO) { XtreamApi(acc, repo.http).login() }
+                                log.add("Cuenta Xtream correcta. $info")
+                                withContext(Dispatchers.IO) {
+                                    r.pending.forEach { p -> saveVivaProfile(viva, r.customerId, p, acc) { line -> scope.launch { log.add(line) } } }
+                                }
+                                log.add("Listo: ${r.saved + r.pending.size} perfil(es) importado(s).")
+                                result = ImportResult(r.saved + r.pending.size, r.customerId, emptyList(), "", "")
+                                finished = true
+                            } catch (e: Exception) {
+                                log.add("No se pudo entrar con esa contraseña: ${friendlyError(e)}")
+                            } finally {
+                                raw = viva.lastRaw
+                                busy = false
+                            }
+                        }
+                    }
+                }
             }
         }
         Spacer(Modifier.width(24.dp))
@@ -171,8 +221,17 @@ private fun VivaImport(onDone: () -> Unit) {
     }
 }
 
-/** Importa los perfiles del usuario indicado. Devuelve cuántos perfiles se guardaron. */
-private suspend fun importFromViva(viva: VivaApi, username: String, log: (String) -> Unit): Int {
+/** Resultado de la importación: perfiles guardados y los que esperan la contraseña Xtream. */
+class ImportResult(
+    val saved: Int,
+    val customerId: String,
+    val pending: List<VivaApi.Pick>,
+    val server: String,
+    val username: String,
+)
+
+/** Importa los perfiles del usuario indicado. */
+private suspend fun importFromViva(viva: VivaApi, username: String, log: (String) -> Unit): ImportResult {
     val repo = RutaApp.repo
     log("Buscando el usuario $username…")
     val customer = viva.findCustomer(username)
@@ -183,10 +242,12 @@ private suspend fun importFromViva(viva: VivaApi, username: String, log: (String
     var picks = viva.profiles(customer.id, customer.obj)
     log("Perfiles encontrados: ${picks.size}")
     if (picks.isEmpty()) {
-        // Algunas cuentas tienen las credenciales en el propio cliente.
         picks = listOf(VivaApi.Pick(customer.id, username, "", customer.obj))
     }
     var saved = 0
+    val pending = ArrayList<VivaApi.Pick>()
+    var server = ""
+    var user = ""
     for (p in picks) {
         val res = try {
             viva.accountFromProfile(p.obj, customer.obj)
@@ -195,26 +256,31 @@ private suspend fun importFromViva(viva: VivaApi, username: String, log: (String
         }
         val acc = res.account
         if (acc == null || !acc.isComplete) {
-            log("${p.label}: ${res.problem}")
+            // Los perfiles de VivaPlayer (Juan Jorge, Gerald…) comparten la cuenta Xtream del cliente;
+            // la API no devuelve la contraseña, así que se pide una vez.
+            pending.add(p)
+            if (server.isEmpty()) server = res.server ?: ""
+            if (user.isEmpty()) user = res.username ?: ""
             continue
         }
-        val profile = Profile(id = "viva_${p.id}", name = p.label, account = acc, vivaProfileId = p.id)
-        repo.upsertProfile(profile)
+        saveVivaProfile(viva, customer.id, p, acc, log)
         saved++
-        try {
-            log("${p.label}: ${XtreamApi(acc, repo.http).login()}")
-        } catch (e: Exception) {
-            log("${p.label}: el servidor Xtream no respondió bien (${friendlyError(e)})")
-        }
-        try {
-            val favs = viva.favorites(customer.id, p.id)
-            val n = repo.importVivaFavorites(profile, favs)
-            log("${p.label}: $n favorito(s) importado(s).")
-        } catch (e: Exception) {
-            log("${p.label}: no se pudieron leer los favoritos (${friendlyError(e)})")
-        }
     }
-    return saved
+    if (pending.isNotEmpty()) log("Falta la contraseña Xtream para ${pending.size} perfil(es). Escríbela abajo una sola vez.")
+    return ImportResult(saved, customer.id, pending, server, user)
+}
+
+private suspend fun saveVivaProfile(viva: VivaApi, customerId: String, p: VivaApi.Pick, acc: XtreamAccount, log: (String) -> Unit) {
+    val repo = RutaApp.repo
+    val profile = Profile(id = "viva_${p.id}", name = p.label, account = acc, vivaProfileId = p.id)
+    repo.upsertProfile(profile)
+    try {
+        val favs = viva.favorites(customerId, p.id)
+        val n = repo.importVivaFavorites(profile, favs)
+        log("${p.label}: perfil guardado, $n favorito(s).")
+    } catch (e: Exception) {
+        log("${p.label}: perfil guardado; no se pudieron leer los favoritos (${friendlyError(e)})")
+    }
 }
 
 /** Pantalla para actualizar favoritos de un perfil que ya existe (desde Ajustes). */

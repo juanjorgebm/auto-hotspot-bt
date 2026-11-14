@@ -125,7 +125,12 @@ class VivaApi(private val token: String, private val client: OkHttpClient) {
     }
 
     /** Resultado de buscar credenciales: la cuenta o el motivo por el que faltan. */
-    data class AccountResult(val account: XtreamAccount?, val problem: String)
+    data class AccountResult(
+        val account: XtreamAccount?,
+        val problem: String,
+        val server: String? = null,
+        val username: String? = null,
+    )
 
     /**
      * Saca servidor/usuario/contraseña de un perfil. Lo que falte en el perfil se busca en el
@@ -157,7 +162,10 @@ class VivaApi(private val token: String, private val client: OkHttpClient) {
         )
         if (missing.isNotEmpty()) {
             val keys = profile.keys().asSequence().toList().joinToString(", ")
-            return AccountResult(null, "falta ${missing.joinToString(", ")} (campos del perfil: $keys)")
+            return AccountResult(
+                null, "falta ${missing.joinToString(", ")} (campos del perfil: $keys)",
+                server?.let { XtreamApi.normalizeServer(it) }, user,
+            )
         }
         return AccountResult(XtreamAccount(XtreamApi.normalizeServer(server!!), user!!, pass!!), "")
     }
