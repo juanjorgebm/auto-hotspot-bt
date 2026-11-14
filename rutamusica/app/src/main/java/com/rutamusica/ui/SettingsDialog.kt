@@ -95,10 +95,21 @@ fun SettingsDialog(vm: MusicViewModel, onClose: () -> Unit) {
                 HorizontalDivider()
 
                 Text(
-                    "Navegador interno (WebView): " + (webview?.let { "versión $it" } ?: "desconocido") +
-                        (if ((webview?.toIntOrNull() ?: 999) < 70) ". Es muy viejo: si el video no carga, actualiza \"Android System WebView\"." else ""),
+                    "Reproductor: ${vm.player?.engineName ?: "?"}. Navegador del sistema: " +
+                        (webview?.let { "versión $it" } ?: "desconocido") + ".",
                     color = Muted, style = MaterialTheme.typography.bodySmall,
                 )
+                SoftButton(
+                    when (vm.prefs.engine) {
+                        "gecko" -> "Motor: incluido (tocar para automático)"
+                        "system" -> "Motor: del sistema (tocar para incluido)"
+                        else -> "Motor: automático (tocar para del sistema)"
+                    },
+                    Modifier.fillMaxWidth(),
+                ) {
+                    vm.prefs.engine = when (vm.prefs.engine) { "auto" -> "system"; "system" -> "gecko"; else -> "auto" }
+                    (context as? android.app.Activity)?.recreate()
+                }
                 Text(
                     "La música se pausa si sales de la app: YouTube no permite que su reproductor suene escondido.",
                     color = Muted, style = MaterialTheme.typography.bodySmall,

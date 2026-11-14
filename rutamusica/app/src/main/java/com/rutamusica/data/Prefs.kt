@@ -36,6 +36,9 @@ class Prefs(context: Context) {
         get() = sp.getBoolean("shuffle", false)
         set(v) = sp.edit().putBoolean("shuffle", v).apply()
 
+    /** Motor del reproductor: "auto", "system" (navegador del sistema) o "gecko" (incluido en la app). */
+    var engine: String get() = s("engine").ifBlank { "auto" }; set(v) = put("engine", v)
+
     var lastCrash: String get() = s("last_crash"); set(v) = put("last_crash", v)
 
     fun signOut() {

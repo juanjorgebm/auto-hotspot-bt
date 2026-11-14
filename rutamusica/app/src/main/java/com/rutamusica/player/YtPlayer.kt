@@ -18,19 +18,15 @@ import android.webkit.WebViewClient
  * extrae el audio. Por eso la música se pausa si sales de la app.
  */
 @SuppressLint("SetJavaScriptEnabled")
-class YtPlayer(context: Context) {
+class YtPlayer(context: Context) : PlayerEngine {
 
-    interface Listener {
-        fun onReady()
-        fun onState(state: Int)
-        fun onError(code: Int)
-        fun onTime(seconds: Double, duration: Double)
-    }
 
-    var listener: Listener? = null
+    override var listener: PlayerEngine.Listener? = null
+    override val engineName = "Navegador del sistema"
+    override val lastErrorText: String? = null
     private val main = Handler(Looper.getMainLooper())
 
-    val view: WebView = WebView(context).apply {
+    override val view: WebView = WebView(context).apply {
         layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
         setBackgroundColor(Color.BLACK)
         settings.javaScriptEnabled = true
@@ -59,17 +55,17 @@ class YtPlayer(context: Context) {
         @JavascriptInterface fun onTime(t: Double, d: Double) = main.post { listener?.onTime(t, d) }.let { }
     }
 
-    private fun js(code: String) = main.post { view.evaluateJavascript(code, null) }
+    private fun js(code: String) { main.post { view.evaluateJavascript(code, null) } }
 
-    fun load(videoId: String, startSec: Double = 0.0) {
+    override fun load(videoId: String, startSec: Double) {
         val safe = videoId.filter { it.isLetterOrDigit() || it == '-' || it == '_' }
         js("loadVideo('$safe', $startSec)")
     }
-    fun play() = js("playV()")
-    fun pause() = js("pauseV()")
-    fun seek(sec: Double) = js("seekV($sec)")
+    override fun play() = js("playV()")
+    override fun pause() = js("pauseV()")
+    override fun seek(sec: Double) = js("seekV($sec)")
 
-    fun destroy() {
+    override fun destroy() {
         listener = null
         view.destroy()
     }
@@ -77,11 +73,5 @@ class YtPlayer(context: Context) {
     companion object {
         const val ORIGIN = "https://com.rutamusica"
 
-        // Estados de YouTube
-        const val ENDED = 0
-        const val PLAYING = 1
-        const val PAUSED = 2
-        const val BUFFERING = 3
-        const val CUED = 5
     }
 }

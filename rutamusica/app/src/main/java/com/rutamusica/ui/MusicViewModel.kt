@@ -16,7 +16,7 @@ import com.rutamusica.data.Playlist
 import com.rutamusica.data.Prefs
 import com.rutamusica.data.Track
 import com.rutamusica.data.YouTubeApi
-import com.rutamusica.player.YtPlayer
+import com.rutamusica.player.PlayerEngine
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -33,7 +33,7 @@ sealed class LyricsState {
     data class Failed(val message: String) : LyricsState()
 }
 
-class MusicViewModel(app: Application) : AndroidViewModel(app), YtPlayer.Listener {
+class MusicViewModel(app: Application) : AndroidViewModel(app), PlayerEngine.Listener {
     val prefs = Prefs(app)
     private val auth = GoogleAuth(app, prefs)
     private val yt = YouTubeApi(app, auth)
@@ -183,7 +183,7 @@ class MusicViewModel(app: Application) : AndroidViewModel(app), YtPlayer.Listene
     }
 
     // ---------- Reproducción ----------
-    var player: YtPlayer? = null
+    var player: PlayerEngine? = null
         set(value) {
             field = value
             value?.listener = this
@@ -208,7 +208,7 @@ class MusicViewModel(app: Application) : AndroidViewModel(app), YtPlayer.Listene
         private set
     var tab by mutableStateOf(Tab.Library)
 
-    val isPlaying get() = playerState == YtPlayer.PLAYING || playerState == YtPlayer.BUFFERING
+    val isPlaying get() = playerState == PlayerEngine.PLAYING || playerState == PlayerEngine.BUFFERING
     private var errorsInARow = 0
     private var skipJob: Job? = null
 
@@ -278,11 +278,11 @@ class MusicViewModel(app: Application) : AndroidViewModel(app), YtPlayer.Listene
 
     override fun onState(state: Int) {
         playerState = state
-        if (state == YtPlayer.PLAYING) {
+        if (state == PlayerEngine.PLAYING) {
             errorsInARow = 0
             playerMessage = null
         }
-        if (state == YtPlayer.ENDED) next()
+        if (state == PlayerEngine.ENDED) next()
     }
 
     override fun onError(code: Int) {
@@ -294,6 +294,7 @@ class MusicViewModel(app: Application) : AndroidViewModel(app), YtPlayer.Listene
             5 -> "La pantalla no pudo reproducir este video. Pasando a la siguiente…"
             152, 153 -> "YouTube rechazó el reproductor (error $code). Avísale a Claude."
             -1 -> "No se pudo cargar el reproductor de YouTube. Revisa el internet."
+            PlayerEngine.TEXT_ERROR -> "YouTube: ${player?.lastErrorText ?: "no se pudo reproducir"}. Pasando a la siguiente…"
             else -> "Error del reproductor de YouTube ($code)."
         }
         if (t == null || code == -1 || code == 152 || code == 153) return

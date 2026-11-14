@@ -10,6 +10,8 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // Motor de Firefox (GeckoView) para pantallas con navegador del sistema muy viejo
+        maven("https://maven.mozilla.org/maven2/")
     }
 }
 rootProject.name = "RutaMusica"

@@ -1,7 +1,7 @@
 package com.rutamusica.ui
 
 import android.view.ViewGroup
-import android.webkit.WebView
+import android.view.View
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -64,7 +64,7 @@ import com.rutamusica.data.Playlist
 import com.rutamusica.data.Track
 
 @Composable
-fun App(vm: MusicViewModel, playerView: WebView) {
+fun App(vm: MusicViewModel, playerView: View) {
     when (vm.stage) {
         Stage.Key -> KeyScreen(vm)
         Stage.Login -> LoginScreen(vm)
@@ -73,7 +73,7 @@ fun App(vm: MusicViewModel, playerView: WebView) {
 }
 
 @Composable
-fun MainScreen(vm: MusicViewModel, playerView: WebView) {
+fun MainScreen(vm: MusicViewModel, playerView: View) {
     var showSettings by remember { mutableStateOf(false) }
     Row(Modifier.fillMaxSize().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
         PlayerPane(vm, playerView, Modifier.weight(0.42f).fillMaxHeight())
@@ -120,7 +120,7 @@ private fun TabButton(text: String, icon: ImageVector, selected: Boolean, onClic
 // ------------------------------------------------------------------ Reproductor
 
 @Composable
-private fun PlayerPane(vm: MusicViewModel, playerView: WebView, modifier: Modifier) {
+private fun PlayerPane(vm: MusicViewModel, playerView: View, modifier: Modifier) {
     val track = vm.current
     Column(modifier) {
         // El video de YouTube siempre visible (regla de YouTube: no se puede esconder ni tapar).

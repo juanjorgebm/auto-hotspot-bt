@@ -13,12 +13,15 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.lifecycleScope
+import android.webkit.WebSettings
+import com.rutamusica.player.GeckoPlayer
+import com.rutamusica.player.PlayerEngine
 import com.rutamusica.player.YtPlayer
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private val vm: MusicViewModel by viewModels()
-    private lateinit var player: YtPlayer
+    private lateinit var player: PlayerEngine
     private var session: MediaSessionCompat? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -26,7 +29,12 @@ class MainActivity : ComponentActivity() {
         // En el carro la pantalla no se debe apagar mientras suena la música.
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
-        player = YtPlayer(this)
+        player = when (vm.prefs.engine) {
+            "gecko" -> GeckoPlayer(this)
+            "system" -> YtPlayer(this)
+            // El reproductor de YouTube no funciona con navegadores del sistema muy viejos (la pantalla trae el 39).
+            else -> if (systemWebViewVersion(this) >= 70) YtPlayer(this) else GeckoPlayer(this)
+        }
         vm.player = player
         setupMediaSession()
 
@@ -77,6 +85,14 @@ class MainActivity : ComponentActivity() {
                     )
                 }
             }
+        }
+    }
+
+    companion object {
+        fun systemWebViewVersion(context: android.content.Context): Int = try {
+            Regex("""Chrome/(\d+)""").find(WebSettings.getDefaultUserAgent(context))?.groupValues?.get(1)?.toInt() ?: 0
+        } catch (_: Throwable) {
+            0
         }
     }
 

@@ -17,6 +17,8 @@ android {
         versionCode = vc
         versionName = "1.0.$vc"
         vectorDrawables.useSupportLibrary = true
+        // Solo ARM de 32 bits (funciona también en pantallas de 64 bits) para que el APK no pese el doble.
+        ndk { abiFilters += listOf("armeabi-v7a") }
     }
 
     // Llave fija (solo de depuración) para que cada APK nuevo se pueda instalar encima del anterior.
@@ -72,6 +74,9 @@ dependencies {
     // Red (con certificados raíz extra para Android 5.1)
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.squareup.okhttp3:okhttp-tls:4.12.0")
+
+    // Motor de Firefox: la versión 143 es la última que funciona en Android 5 (desde la 144 piden Android 8).
+    implementation("org.mozilla.geckoview:geckoview:143.+")
 
     // Carátulas
     implementation("io.coil-kt:coil-compose:2.7.0")
