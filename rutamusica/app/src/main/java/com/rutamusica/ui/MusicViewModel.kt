@@ -412,29 +412,60 @@ class MusicViewModel(app: Application) : AndroidViewModel(app), PlayerEngine.Lis
     }
 
     /** Arma las filas. Gasta poco cupo: ~1 por fila (unas 30 en total), y se guarda 30 minutos. */
+    /**
+     * Arma las filas poco a poco: cada fila aparece apenas llega (primero las rápidas).
+     * Las filas de la vez anterior se muestran de una vez mientras tanto.
+     */
     fun loadVideoHome() {
         videoLoading = true
         videoError = null
+        if (videoRows.isEmpty()) videoRows = readRowsCache()
+        // Si ya hay filas en pantalla (de la vez anterior), se cambian todas juntas al final.
+        val progressive = videoRows.isEmpty()
         viewModelScope.launch {
+            // Lugares fijos para que las filas no salten de posición al ir llegando.
+            val slots = LinkedHashMap<String, VideoRow?>()
+            val fixed = listOf("new", "trend", "likes", "music")
+            fixed.forEach { slots[it] = null }
+            fun publish() {
+                if (progressive) videoRows = slots.values.filterNotNull()
+            }
+            fun put(key: String, row: VideoRow?) {
+                if (row == null || row.items.isEmpty()) return
+                slots[key] = row
+                publish()
+            }
             try {
-                val rows = mutableListOf<VideoRow>()
-                val subs = runCatching { yt.subscriptions(60) }.getOrDefault(emptyList())
-                val perChannel = coroutineScope {
-                    subs.take(25).map { ch -> async { ch to runCatching { yt.channelUploads(ch.id, 12) }.getOrDefault(emptyList()) } }.awaitAll()
-                }.filter { it.second.isNotEmpty() }
-                    .sortedByDescending { it.second.first().published }
-                val latest = perChannel.flatMap { it.second }.sortedByDescending { it.published }.take(40)
-                if (latest.isNotEmpty()) rows += VideoRow("Lo nuevo de tus suscripciones", latest)
-                runCatching { yt.popular("CR") }.getOrNull()?.takeIf { it.isNotEmpty() }?.let { rows += VideoRow("Tendencias en Costa Rica", it) }
-                val likesId = playlists.firstOrNull { it.special }?.id ?: "LL"
-                runCatching { yt.playlistItems(likesId, 40) }.getOrNull()?.takeIf { it.isNotEmpty() }?.let { rows += VideoRow("Tus Me gusta", it) }
-                runCatching { yt.popular("CR", category = "10") }.getOrNull()?.takeIf { it.isNotEmpty() }?.let { rows += VideoRow("Música popular", it) }
-                perChannel.forEach { (ch, vids) -> rows += VideoRow(ch.title, vids) }
-                playlists.filter { it.id in favorites && !it.special }.forEach { p ->
-                    runCatching { yt.playlistItems(p.id, 30) }.getOrNull()?.takeIf { it.isNotEmpty() }?.let { rows += VideoRow(p.title, it) }
+                coroutineScope {
+                    launch { put("trend", runCatching { VideoRow("Tendencias en Costa Rica", yt.popular("CR")) }.getOrNull()) }
+                    launch {
+                        val likesId = playlists.firstOrNull { it.special }?.id ?: "LL"
+                        put("likes", runCatching { VideoRow("Tus Me gusta", yt.playlistItems(likesId, 40)) }.getOrNull())
+                    }
+                    launch { put("music", runCatching { VideoRow("Música popular", yt.popular("CR", category = "10")) }.getOrNull()) }
+                    launch {
+                        val subs = runCatching { yt.subscriptions(60) }.getOrDefault(emptyList()).take(25)
+                        subs.forEach { slots["ch:" + it.id] = null }
+                        playlists.filter { it.id in favorites && !it.special }.forEach { slots["pl:" + it.id] = null }
+                        val done = coroutineScope {
+                            subs.map { ch ->
+                                async {
+                                    val vids = runCatching { yt.channelUploads(ch.id, 12) }.getOrDefault(emptyList())
+                                    put("ch:" + ch.id, VideoRow(ch.title, vids))
+                                    vids
+                                }
+                            }.awaitAll()
+                        }
+                        val latest = done.flatten().sortedByDescending { it.published }.take(40)
+                        put("new", VideoRow("Lo nuevo de tus suscripciones", latest))
+                        playlists.filter { it.id in favorites && !it.special }.forEach { p ->
+                            put("pl:" + p.id, runCatching { VideoRow(p.title, yt.playlistItems(p.id, 30)) }.getOrNull())
+                        }
+                    }
                 }
+                val rows = slots.values.filterNotNull()
                 if (rows.isEmpty()) videoError = "No pude leer videos de tu cuenta. Revisa el internet."
-                videoRows = rows
+                else { videoRows = rows; writeRowsCache(rows) }
                 videoLoadedAt = System.currentTimeMillis()
             } catch (e: CancellationException) {
                 throw e
@@ -445,6 +476,32 @@ class MusicViewModel(app: Application) : AndroidViewModel(app), PlayerEngine.Lis
             }
         }
     }
+
+    private val rowsCacheFile get() = java.io.File(getApplication<Application>().filesDir, "video_rows.json")
+
+    private fun writeRowsCache(rows: List<VideoRow>) = runCatching {
+        val arr = org.json.JSONArray()
+        rows.forEach { r ->
+            val items = org.json.JSONArray()
+            r.items.forEach { t ->
+                items.put(org.json.JSONObject().put("v", t.videoId).put("t", t.title).put("c", t.channel).put("i", t.thumb ?: "").put("p", t.published))
+            }
+            arr.put(org.json.JSONObject().put("title", r.title).put("items", items))
+        }
+        rowsCacheFile.writeText(arr.toString())
+    }
+
+    private fun readRowsCache(): List<VideoRow> = runCatching {
+        val arr = org.json.JSONArray(rowsCacheFile.readText())
+        (0 until arr.length()).map { i ->
+            val o = arr.getJSONObject(i)
+            val items = o.getJSONArray("items")
+            VideoRow(o.getString("title"), (0 until items.length()).map { j ->
+                val t = items.getJSONObject(j)
+                Track(t.getString("v"), t.optString("t"), t.optString("c"), t.optString("i").ifBlank { null }, t.optString("p"))
+            })
+        }
+    }.getOrDefault(emptyList())
 
     var videoSearchResults by mutableStateOf<List<Track>>(emptyList())
         private set

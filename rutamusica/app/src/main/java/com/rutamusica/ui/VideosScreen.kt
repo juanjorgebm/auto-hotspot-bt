@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -80,6 +81,7 @@ fun VideosScreen(vm: MusicViewModel) {
                 Text("Música", style = MaterialTheme.typography.labelLarge, color = Color.White)
             }
             Text("Videos", style = MaterialTheme.typography.headlineMedium, color = Color.White)
+            if (vm.videoLoading) CircularProgressIndicator(Modifier.size(28.dp), color = Accent, strokeWidth = 3.dp)
             Spacer(Modifier.weight(1f))
             if (searching) {
                 OutlinedTextField(

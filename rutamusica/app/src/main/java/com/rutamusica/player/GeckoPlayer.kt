@@ -144,12 +144,34 @@ class GeckoPlayer(context: Context) : PlayerEngine {
     companion object {
         @Volatile private var runtime: GeckoRuntime? = null
 
+        /**
+         * Ajustes del motor para la pantalla del carro:
+         * - Sin VP9/AV1/WebM: YouTube manda H.264, que la pantalla decodifica por hardware
+         *   (con VP9 lo hacía el procesador: el video se trababa y cambiaba de color).
+         * - Densidad 1: YouTube elige una calidad acorde a la pantalla y no una más pesada.
+         */
+        private fun writeConfig(context: Context): String {
+            val f = java.io.File(context.filesDir, "geckoview-config.yaml")
+            f.writeText(
+                """
+                prefs:
+                  media.mediasource.webm.enabled: false
+                  media.mediasource.vp9.enabled: false
+                  media.av1.enabled: false
+                  media.webm.enabled: false
+                  layout.css.devPixelsPerPx: "1.0"
+                """.trimIndent() + "\n"
+            )
+            return f.absolutePath
+        }
+
         fun runtime(context: Context): GeckoRuntime = runtime ?: synchronized(this) {
             runtime ?: GeckoRuntime.create(
                 context.applicationContext,
                 GeckoRuntimeSettings.Builder()
                     .javaScriptEnabled(true)
                     .consoleOutput(false)
+                    .configFilePath(writeConfig(context))
                     .build()
             ).also { runtime = it }
         }
